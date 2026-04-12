@@ -175,9 +175,16 @@ Email Body: ${text}
     };
 
     // 3. Save to MongoDB CalendarEvent collection first
-    //    This always succeeds regardless of Google Calendar status
+    //    Deduplicate by userId + company + date to prevent duplicate events
+    //    from multiple emails about the same interview
     const eventDoc = await CalendarEvent.findOneAndUpdate(
-      { userId, emailId: email._id },
+      {
+        userId,
+        $or: [
+          { emailId: email._id },
+          { company: details.company, date: new Date(`${details.date}T${details.startTime}`) }
+        ]
+      },
       {
         userId,
         emailId:       email._id,

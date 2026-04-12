@@ -593,11 +593,14 @@ export const getCalendarConnectionStatus = async () => {
     const res = await fetch(`${BASE_URL}/calendar/status`, {
       credentials: "include",
     });
-    if (!res.ok) return false;
+    if (!res.ok) return { isConnected: false, calendarEmail: null };
     const data = await res.json();
-    return data.data.isConnected;
+    return {
+      isConnected: data.data.isConnected,
+      calendarEmail: data.data.calendarEmail || null,
+    };
   } catch {
-    return false;
+    return { isConnected: false, calendarEmail: null };
   }
 };
 

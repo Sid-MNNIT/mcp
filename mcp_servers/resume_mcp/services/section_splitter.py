@@ -344,4 +344,8 @@ def split_sections(text):
         logger.info("section_splitter: Groq corrections degraded result, keeping regex")
 
     logger.info("section_splitter: using regex result")
+<<<<<<< HEAD
     return regex_result
+=======
+    return regex_result
+>>>>>>> a8c47529 (Final working)

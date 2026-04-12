@@ -40,6 +40,13 @@ export default function CalendarWidget() {
     }
   }, [activeDate, isConnected, view]);
 
+  // Re-fetch when an event is deleted from UpcomingEvents
+  useEffect(() => {
+    const handler = () => fetchEventsForMonth();
+    window.addEventListener("calendar-event-deleted", handler);
+    return () => window.removeEventListener("calendar-event-deleted", handler);
+  }, [activeDate]);
+
   // Check for OAuth callback success
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

@@ -11,10 +11,7 @@ import { startEmailSyncJob } from "./jobs/emailSync.job.js";
 
 connectDB()
 .then(async ()=>{
-    // Drop the stale userId_1_googleEventId_1 index if it still exists.
-    // This index was created in an earlier schema version and causes
-    // E11000 duplicate key errors when saving calendar events without
-    // a Google Calendar ID (googleEventId: null).
+
     try {
       const { CalendarEvent } = await import("./models/calendarEvent.model.js");
       const db = mongoose.connection.db;
@@ -22,16 +19,14 @@ connectDB()
       const indexes = await col.indexes();
       console.log("📋 [Startup] calendarevents indexes:", indexes.map(i => i.name));
 
-      // 1. Drop stale index from old schema if it still exists
+     
       const staleIndex = indexes.find(i => i.name === "userId_1_googleEventId_1");
       if (staleIndex) {
         await col.dropIndex("userId_1_googleEventId_1");
         console.log("🗑️  Dropped stale index: userId_1_googleEventId_1");
       }
 
-      // 2. Remove duplicate emailId:null documents so the unique sparse
-      //    index on {userId, emailId} can be built without conflicts.
-      //    For each user, keep the most recent null-emailId doc and delete the rest.
+
       const nullEmailDocs = await col
         .find({ emailId: null })
         .sort({ createdAt: -1 })
@@ -52,7 +47,7 @@ connectDB()
         console.log(`🗑️  Removed ${toDelete.length} duplicate null-emailId calendarevents doc(s)`);
       }
 
-      // 3. Sync schema indexes
+     
       await CalendarEvent.syncIndexes();
       console.log("✅ [Startup] calendarevents indexes synced");
     } catch (indexErr) {
@@ -61,9 +56,9 @@ connectDB()
 
     app.listen(process.env.PORT || 5000,()=>{
         console.log(`Server is running on port ${process.env.PORT || 5000}`);
-        startEmailSyncJob(); // Start the email sync cron job when the server starts
+        startEmailSyncJob(); 
         
-         // Start cron jobs
+         
       console.log("🚀 Initializing cron jobs...");
       //cronService.startEmailSyncJob();
     });

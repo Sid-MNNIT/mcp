@@ -100,8 +100,9 @@ RULES (DO NOT BREAK)
 4. If intent matches a pipeline, return ACTION
    EVEN IF required arguments are missing.
 5. Choose EXACTLY ONE pipeline for ACTION.
-6. "show me", "give me", "what did X send", "contents of", "read my email"
-   → ALWAYS use email_query pipeline, NEVER CHAT.
+6. "show me", "give me", "what did X send", "contents of", "read my email",
+   "tell me about X email", "what is the X email", "details of X email", "about the X email"
+   → ALWAYS use email_query pipeline with args.sender = company name, NEVER CHAT.
 7. "summary", "overview", "briefing", "what happened"
    → ALWAYS use email_digest pipeline.
 8. "draft a reply", "write a reply", "respond to"
@@ -109,10 +110,17 @@ RULES (DO NOT BREAK)
 9. For email_query, extract the sender company name into args.sender
    (e.g. "desmus and co" → sender: "desmus", "amazon" → sender: "amazon").
 10. "scheduled interviews", "upcoming interviews", "my interviews", "interview emails"
-    → ALWAYS use email_query with args.type = "INTERVIEW", NEVER application_stats.
+    → use calendar_events pipeline to fetch upcoming calendar events, NOT email_query.
 11. "how is my job search", "application status", "track my applications"
     → use application_stats pipeline.
 12. NEVER use application_stats for questions about specific email types like interviews.
+13. "when is my next interview", "what do I have coming up", "show my schedule", "any interviews this week"
+    → ALWAYS use calendar_events pipeline.
+14. calendar_events fetches real scheduled events with date/time/meeting link.
+    email_query fetches raw emails. Use calendar_events for schedule questions.
+15. "what should I study for X interview", "how to prepare for X", "what to add to resume for X",
+    "tips for X interview", "help me prepare for X", "what topics for X"
+    → ALWAYS use interview_prep pipeline. Extract company name into args.company.
 
 --------------------------------------------------
 AVAILABLE PIPELINES
@@ -174,13 +182,13 @@ User: Reply to the recruiter email
   "reasoning": "User wants to reply to an email but did not specify message ID."
 }}
 
-User: Show me my desmus&co email / give me the contents of my desmus and co email / what did amazon send me
+User: Show me my desmus&co email / give me the contents of my desmus and co email / what did amazon send me / can you tell me about the microsoft email / tell me about the flipkart email / details of the google email
 {{
   "type": "ACTION",
   "pipeline": "email_query",
   "args": {{"sender": "desmus"}},
   "confidence": 0.92,
-  "reasoning": "User wants to read/view an email from a specific sender. Use email_query with the sender keyword."
+  "reasoning": "User wants to read/view an email from a specific sender. Use email_query with the sender keyword extracted from the company name."
 }}
 
 User: Show me my offer emails / list my interview emails / any rejection emails?
@@ -192,13 +200,22 @@ User: Show me my offer emails / list my interview emails / any rejection emails?
   "reasoning": "User wants to see emails filtered by type. Use email_query with the type field."
 }}
 
-User: What interviews do I have scheduled? / Show my scheduled interviews / any upcoming interviews?
+User: what should I study for the Flipkart interview / how should I prepare for Microsoft / what to add to my resume for DuaGo / tips for Google interview
 {{
   "type": "ACTION",
-  "pipeline": "email_query",
-  "args": {{"type": "INTERVIEW"}},
-  "confidence": 0.95,
-  "reasoning": "User wants interview emails. Use email_query with type=INTERVIEW, NOT application_stats."
+  "pipeline": "interview_prep",
+  "args": {{"company": "Flipkart"}},
+  "confidence": 0.97,
+  "reasoning": "User wants personalized interview prep advice. Extract company name and use interview_prep pipeline."
+}}
+
+User: What interviews do I have scheduled? / Show my scheduled interviews / any upcoming interviews? / when is my next interview?
+{{
+  "type": "ACTION",
+  "pipeline": "calendar_events",
+  "args": {{"days": 30}},
+  "confidence": 0.97,
+  "reasoning": "User wants upcoming scheduled interviews with dates and times. Use calendar_events pipeline."
 }}
 
 User: What emails did I receive this week? / Show me all my emails

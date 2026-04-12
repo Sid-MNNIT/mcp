@@ -154,12 +154,23 @@ export const deleteCalendarEvent = asyncHandler(async (req, res) => {
 export const getCalendarConnectionStatus = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   
-  const user = await User.findById(userId).select('googleCalendarTokens');
+  const user = await User.findById(userId).select('googleCalendarTokens email');
   const isConnected = !!user?.googleCalendarTokens?.access_token;
+
+  // Extract the connected Google account email from the id_token if available
+  let calendarEmail = null;
+  if (isConnected && user.googleCalendarTokens?.id_token) {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(user.googleCalendarTokens.id_token.split('.')[1], 'base64').toString()
+      );
+      calendarEmail = payload.email || null;
+    } catch {}
+  }
 
   return res
     .status(200)
-    .json(new ApiResponse(200, { isConnected }, 'Calendar connection status'));
+    .json(new ApiResponse(200, { isConnected, calendarEmail }, 'Calendar connection status'));
 });
 
 /**

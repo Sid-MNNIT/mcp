@@ -1,10 +1,10 @@
 import React from "react";
-import { FileCheck2, Mail, CheckCheck, X, ArrowRight } from "lucide-react";
+import { FileCheck2, Mail, Calendar, CheckCheck, X, ArrowRight } from "lucide-react";
 
 const CONFIG = {
   resume: {
     icon: FileCheck2,
-    label: "Resume Status",
+    label: "Resume",
     successDetail: "ATS-ready & fully parsed",
     errorDetail:   "Upload a resume to get started",
     accentColor:   "#16a34a",
@@ -16,7 +16,7 @@ const CONFIG = {
   },
   gmail: {
     icon: Mail,
-    label: "Gmail Integration",
+    label: "Gmail",
     successDetail: "Emails are being synced",
     errorDetail:   "Click to connect your inbox",
     accentColor:   "#1d4ed8",
@@ -26,11 +26,22 @@ const CONFIG = {
     errorSoft:     "#fee2e2",
     errorBorder:   "#fecaca",
   },
+  calendar: {
+    icon: Calendar,
+    label: "Google Calendar",
+    successDetail: "Interviews auto-scheduled",
+    errorDetail:   "Connect to auto-schedule",
+    accentColor:   "#7c3aed",
+    softColor:     "#f5f3ff",
+    borderColor:   "#ddd6fe",
+    errorAccent:   "#dc2626",
+    errorSoft:     "#fee2e2",
+    errorBorder:   "#fecaca",
+  },
 };
 
 export default function StatusCard({
   type = "resume",
-  title = "Resume",
   statusText = "Parsed & Ready",
   lastUpdated = "Updated just now",
   state = "success",
@@ -38,17 +49,16 @@ export default function StatusCard({
 }) {
   const cfg = CONFIG[type] || CONFIG.resume;
   const Icon = cfg.icon;
-
   const isSuccess = state === "success";
 
-  const accentColor  = isSuccess ? cfg.accentColor  : cfg.errorAccent;
-  const softColor    = isSuccess ? cfg.softColor     : cfg.errorSoft;
-  const borderColor  = isSuccess ? cfg.borderColor   : cfg.errorBorder;
-  const detail       = isSuccess ? cfg.successDetail : cfg.errorDetail;
+  const accentColor = isSuccess ? cfg.accentColor : cfg.errorAccent;
+  const softColor   = isSuccess ? cfg.softColor   : cfg.errorSoft;
+  const borderColor = isSuccess ? cfg.borderColor : cfg.errorBorder;
+  const detail      = isSuccess ? cfg.successDetail : cfg.errorDetail;
 
   return (
     <div
-      className="status-card-v2"
+      className="scv3"
       onClick={onClick}
       tabIndex={onClick ? 0 : -1}
       role={onClick ? "button" : undefined}
@@ -56,47 +66,39 @@ export default function StatusCard({
         if (onClick && (e.key === "Enter" || e.key === " ")) onClick();
       }}
       style={{
-        "--card-accent":  accentColor,
-        "--card-soft":    softColor,
-        "--card-border":  borderColor,
+        "--ca": accentColor,
+        "--cs": softColor,
+        "--cb": borderColor,
         cursor: onClick ? "pointer" : "default",
       }}
     >
-      {/* Top accent bar */}
-      <div className="scv2-accent-bar" />
+      <div className="scv3__bar" />
 
-      <div className="scv2-body">
-        {/* Left: icon block */}
-        <div className="scv2-icon-block">
-          <Icon size={24} strokeWidth={1.8} />
+      <div className="scv3__head">
+        <div className="scv3__icon">
+          <Icon size={18} strokeWidth={2} />
         </div>
-
-        {/* Middle: text */}
-        <div className="scv2-text">
-          <span className="scv2-label">{cfg.label}</span>
-          <span className="scv2-value">{statusText}</span>
-          <span className="scv2-detail">{detail}</span>
-        </div>
-
-        {/* Right: badge + optional cta */}
-        <div className="scv2-right">
-          <span className={`scv2-badge ${isSuccess ? "scv2-badge--ok" : "scv2-badge--err"}`}>
-            {isSuccess
-              ? <><CheckCheck size={12} strokeWidth={2.5} /> Active</>
-              : <><X         size={12} strokeWidth={2.5} /> Inactive</>
-            }
-          </span>
-          {onClick && !isSuccess && (
-            <span className="scv2-cta">
-              Connect <ArrowRight size={12} strokeWidth={2.5} />
-            </span>
-          )}
-        </div>
+        <span className="scv3__label">{cfg.label}</span>
+        <span className={`scv3__badge ${isSuccess ? "scv3__badge--ok" : "scv3__badge--err"}`}>
+          {isSuccess
+            ? <><CheckCheck size={11} strokeWidth={2.5} /> Active</>
+            : <><X size={11} strokeWidth={2.5} /> Inactive</>
+          }
+        </span>
       </div>
 
-      {/* Bottom: last updated */}
-      <div className="scv2-footer">
-        <span className="scv2-timestamp">{lastUpdated}</span>
+      <div className="scv3__body">
+        <span className="scv3__value">{statusText}</span>
+        <span className="scv3__detail">{detail}</span>
+      </div>
+
+      <div className="scv3__footer">
+        <span className="scv3__ts">{lastUpdated}</span>
+        {onClick && !isSuccess && (
+          <span className="scv3__cta">
+            Connect <ArrowRight size={11} strokeWidth={2.5} />
+          </span>
+        )}
       </div>
     </div>
   );

@@ -195,4 +195,38 @@ PIPELINE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "optional_args": [],
         "requires_confirmation": False,
     },
+
+    "interview_prep": {
+        "endpoint": "/pipelines/interview-prep",
+        "type": "ACTION",
+        "risk": "LOW",
+        "description": (
+            "Give personalized interview preparation advice by reading the user's resume "
+            "and the interview email from a specific company. Cross-references the user's "
+            "skills and experience against what the email mentions, and gives actionable advice. "
+            "Use when user asks: 'what should I study for X interview', "
+            "'how should I prepare for X', 'what should I add to my resume for X', "
+            "'what topics should I cover for X interview', 'tips for X interview', "
+            "'help me prepare for X'. Always extract the company name into args.company."
+        ),
+        "required_args": ["company"],
+        "optional_args": [],
+        "requires_confirmation": False,
+    },
+
+    "calendar_events": {
+        "endpoint": "/pipelines/calendar-events",
+        "type": "ACTION",
+        "risk": "LOW",
+        "description": (
+            "Fetch the user's upcoming calendar events (interviews, assessments, meetings). "
+            "Use when user asks: 'what are my upcoming interviews', 'show my schedule', "
+            "'any interviews this week', 'what do I have coming up', "
+            "'when is my next interview', 'show my calendar events'. "
+            "days defaults to 30 (next 30 days) if not specified."
+        ),
+        "required_args": [],
+        "optional_args": ["days"],
+        "requires_confirmation": False,
+    },
 }

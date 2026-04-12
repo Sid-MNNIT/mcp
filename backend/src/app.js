@@ -39,24 +39,20 @@ import notificationsRouter from "./routes/notifications.route.js"
 import resumeRouter from "./routes/resume.route.js";
 import { sseService } from "./services/sse.service.js";
 import { verifyJWT } from "./middleware/auth.middleware.js";
-// --------------------
-// Route mounting
-// --------------------
+
 app.use("/api/user", userRouter);
 app.use("/api/profile", profileRoutes);
 app.use("/api/calendar", calendarRouter);
-// auth = login / register / me
+
 app.use("/api/auth", userAuthRouter);
 
 app.use("/api/jobs", jobsRouter);
 
-// emails CRUD
 app.use("/api/emails", emailRoutes);
 
 
 
 
-// 🔐 INTERNAL SERVICE ROUTES (VERY IMPORTANT)
 app.use("/internal/google", internalGoogleRoutes);
 
 app.use("/sync/google",googleSyncRoutes)
@@ -64,9 +60,9 @@ app.use("/sync/google",googleSyncRoutes)
 app.use("/api/ai",aiRoutes)
 app.use("/api/notifications", notificationsRouter)
 
-// Resume upload + parse routes
+
 app.use("/api/resume", resumeRouter);
-// SSE — real-time push to browser when cron syncs new emails
+
 app.get("/api/sse", verifyJWT, (req, res) => {
   if (!req.user?._id) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -76,16 +72,12 @@ app.get("/api/sse", verifyJWT, (req, res) => {
   req.on("close", () => sseService.removeClient(userId));
 });
 
-// --------------------
-// Health check
-// --------------------
+
 app.get("/", (req, res) => {
   res.send("Hey Ladies");
 });
 
-// --------------------
-// 404 handler
-// --------------------
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -93,9 +85,7 @@ app.use((req, res) => {
   });
 });
 
-// --------------------
-// Global error handler
-// --------------------
+
 app.use((err, req, res, next) => {
   console.error("=== GLOBAL ERROR HANDLER ===");
   console.error(err);

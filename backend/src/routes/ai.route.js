@@ -6,8 +6,6 @@ const router = Router();
 
 router.post("/execute", verifyJWT, aiExecute);
 
-// Chat proxy — verifyJWT reads the httpOnly cookie, then aiChat forwards
-// the JWT as Bearer to the Python ask-jobsy service.
 router.post("/chat", verifyJWT, aiChat);
 
 export default router;

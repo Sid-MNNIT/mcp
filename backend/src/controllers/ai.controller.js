@@ -11,7 +11,7 @@ export async function aiChat(req, res) {
       return res.status(400).json({ error: "text is required" });
     }
 
-    // JWT already validated by verifyJWT — pull it from cookie or header
+
     const jwt =
       req.headers.authorization?.replace("Bearer ", "") ||
       req.cookies?.accessToken;
@@ -20,6 +20,9 @@ export async function aiChat(req, res) {
       return res.status(401).json({ error: "JWT missing" });
     }
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 180_000); // 3 min for heavy pipelines
+
     const response = await fetch(`${ASK_JOBSY_URL}/ask-jobsy`, {
       method: "POST",
       headers: {
@@ -27,7 +30,10 @@ export async function aiChat(req, res) {
         Authorization: `Bearer ${jwt}`,
       },
       body: JSON.stringify({ text, conversation_id, metadata: metadata || {} }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timer);
 
     if (!response.ok) {
       const err = await response.text();

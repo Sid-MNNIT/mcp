@@ -30,7 +30,7 @@ const url = isPipeline
     headers.Authorization = `Bearer ${jwt}`;
   }
   if (source === "cron" && userId) {
-    headers["X-User-Id"] = userId; //Send userId in header for cron
+    headers["X-User-Id"] = userId; 
   }
 
   const body = isPipeline

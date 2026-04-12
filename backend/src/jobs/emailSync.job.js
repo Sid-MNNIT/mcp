@@ -76,6 +76,7 @@ async function autoScheduleInterviews(user) {
   const interviewEmails = await Email.find({
     userId: user._id,
     type: "INTERVIEW",
+    folder: "INBOX",   // Never create events from SENT emails (replies, etc.)
     calendarEventCreated: { $ne: true },
     calendarEventDeleted: { $ne: true },
   });

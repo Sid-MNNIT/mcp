@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { format, parseISO, isAfter, startOfDay, addDays } from "date-fns";
 import { calendarService } from "../../services/calendar.service";
+import { deleteCalendarEvent } from "../../utils/api";
 
 function getCompanyInitial(str = "") {
   return str.charAt(0).toUpperCase() || "?";
@@ -75,7 +76,7 @@ function CloseIcon() {
 }
 
 // ── Event Detail Card (modal overlay) ──────────────────────
-function EventDetailCard({ event, onClose }) {
+function EventDetailCard({ event, onClose, onDelete }) {
   if (!event) return null;
 
   const color = getLogoColor(event.summary);
@@ -153,25 +154,52 @@ function EventDetailCard({ event, onClose }) {
             </div>
           </div>
 
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            style={{
-              background: "var(--bg-primary)",
-              border: "1.5px solid var(--border-color)",
-              borderRadius: "var(--radius-md)",
-              width: 32, height: 32,
-              display: "grid", placeItems: "center",
-              cursor: "pointer",
-              color: "var(--text-muted)",
-              transition: "background 0.15s, color 0.15s",
-              flexShrink: 0,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-solid)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "var(--bg-primary)"; e.currentTarget.style.color = "var(--text-muted)"; }}
-          >
-            <CloseIcon />
-          </button>
+          {/* Top-right: Delete + Close */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {/* Delete button */}
+            <button
+              onClick={onDelete}
+              title="Delete event"
+              style={{
+                background: "#fee2e2",
+                border: "1.5px solid #fecaca",
+                borderRadius: "var(--radius-md)",
+                width: 32, height: 32,
+                display: "grid", placeItems: "center",
+                cursor: "pointer",
+                color: "#ef4444",
+                transition: "background 0.15s, color 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#ef4444"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.color = "#ef4444"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              style={{
+                background: "var(--bg-primary)",
+                border: "1.5px solid var(--border-color)",
+                borderRadius: "var(--radius-md)",
+                width: 32, height: 32,
+                display: "grid", placeItems: "center",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                transition: "background 0.15s, color 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "var(--danger-bg)"; e.currentTarget.style.color = "var(--danger-solid)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "var(--bg-primary)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+            >
+              <CloseIcon />
+            </button>
+          </div>
         </div>
 
         {/* Details */}
@@ -289,6 +317,8 @@ function EventDetailCard({ event, onClose }) {
               Open in Google Calendar
             </a>
           )}
+
+
         </div>
       </div>
 
@@ -446,7 +476,7 @@ export default function UpcomingEvents() {
               <div
                 key={event.id}
                 className="event-row"
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer", position: "relative" }}
                 onClick={() => setSelectedEvent(event)}
               >
                 {/* Left: Logo + Name */}
@@ -487,6 +517,19 @@ export default function UpcomingEvents() {
         <EventDetailCard
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onDelete={async () => {
+            try {
+              await deleteCalendarEvent(selectedEvent.id);
+              // Remove from list
+              setEvents(prev => prev.filter(ev => ev.id !== selectedEvent.id));
+              // Close modal
+              setSelectedEvent(null);
+              // Reload CalendarWidget by dispatching a custom event
+              window.dispatchEvent(new CustomEvent("calendar-event-deleted"));
+            } catch (err) {
+              console.error("Failed to delete event", err);
+            }
+          }}
         />
       )}
     </>

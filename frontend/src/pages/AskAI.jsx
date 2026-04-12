@@ -5,9 +5,6 @@ import Sidebar from "../components/layout/Sidebar";
 import "../styles/dashboard.css";
 import "../styles/askai.css";
 
-// ✅ Use the dedicated /api/ai/chat proxy — NOT /api/ai/execute.
-// Node's verifyJWT reads the httpOnly cookie and forwards the JWT as Bearer
-// to Python. conversation_id is scoped per user in Redis on the Python side.
 const CHAT_URL = "http://localhost:5000/api/ai/chat";
 
 const SUGGESTIONS = [
@@ -18,11 +15,7 @@ const SUGGESTIONS = [
   "How is my job search going?",
 ];
 
-// ─────────────────────────────────────────────
-// conversation_id: stored in localStorage but
-// NEVER shared across users — cleared on logout
-// via TopHeader.jsx → localStorage.removeItem
-// ─────────────────────────────────────────────
+
 const CONV_ID_KEY = "jobsy_ai_conv_id";
 
 function getOrCreateConvId() {
@@ -34,13 +27,7 @@ function getOrCreateConvId() {
   return id;
 }
 
-// ─────────────────────────────────────────────
-// ❌ DO NOT persist messages in localStorage.
-// Persisting means the next user who logs in on
-// the same browser sees the previous user's chat
-// history — the root cause of the hallucination.
-// Messages are in-memory only (useState).
-// ─────────────────────────────────────────────
+
 
 function TypingDots() {
   return (
@@ -122,8 +109,7 @@ export default function AskAI() {
     setLoading(true);
 
     try {
-      // ✅ credentials:"include" sends httpOnly cookie to Node.
-      // Node verifies JWT, then forwards it as Bearer to Python /ask-jobsy.
+
       const res = await fetch(CHAT_URL, {
         method: "POST",
         credentials: "include",

@@ -10,7 +10,6 @@ class EmailService {
       throw new Error("tool is required");
     }
 
-    // If no JWT, this is an internal/cron call — use service key auth
     const source = jwt ? "user" : "cron";
 
     return callMCP({

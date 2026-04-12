@@ -248,13 +248,13 @@ return res.status(200).json({
 
 const gmailStatus=asyncHandler(async (req,res)=>{
   const user=await User.findById(req.user._id).select(
-    "isGmailConnected  updatedAt"
+    "isGmailConnected updatedAt email"
   )
   return res.json({
     connected:user.isGmailConnected,
-    lastSync:user.updatedAt
+    lastSync:user.updatedAt,
+    gmailEmail: user.isGmailConnected ? user.email : null,
   })
-
 })
 
 

@@ -98,7 +98,7 @@ async def handle_user_message(
 
     metadata = metadata or {}
 
-    # Extract user_id from JWT so memory is scoped per user
+    
     user_id = ""
     try:
         payload_part = jwt.split(".")[1]
@@ -110,7 +110,7 @@ async def handle_user_message(
 
     conversation_context = get_conversation_context(conversation_id, user_id)
 
-    # Fetch user profile and inject into metadata for the planner
+   
     user_profile = await fetch_user_profile(jwt)
     if user_profile:
         metadata["user_profile"] = user_profile
@@ -123,7 +123,7 @@ async def handle_user_message(
 
    
     if plan["type"] == "CHAT":
-        # Generate a real conversational reply using the LLM
+        
         from client.llm.openai_client import get_openai_client, get_openai_model
         client = get_openai_client()
         model = get_openai_model()
@@ -133,7 +133,7 @@ async def handle_user_message(
             for t in conversation_context
         ]
 
-        # Build personalised system prompt from profile
+    
         p = metadata.get("user_profile", {})
         if p:
             name = p.get("fullname", "there")
@@ -247,6 +247,29 @@ async def handle_user_message(
         args=plan["args"],
         jwt=jwt,
     )
+
+    # -----------------------------
+    # 6b. Short-circuit for interview_prep
+    # The pipeline already runs GPT internally and returns polished advice.
+    # Re-summarizing would lose quality — return the advice directly.
+    # -----------------------------
+    if plan["pipeline"] == "interview_prep" and result.get("advice"):
+        advice_reply = result["advice"]
+        if not result.get("hasResume"):
+            advice_reply = "⚠️ I couldn't find your resume. Please upload it from the Resume page for more personalized advice.\n\n" + advice_reply
+        if not result.get("hasEmail"):
+            advice_reply += "\n\n⚠️ I couldn't find a specific interview email from this company, so the advice is based on general knowledge."
+        save_conversation_turn(
+            conversation_id=conversation_id,
+            user_message=user_message,
+            assistant_message=f"Gave interview prep advice for {result.get('company')}",
+            user_id=user_id,
+        )
+        return {
+            "response": advice_reply,
+            "conversation_id": conversation_id,
+            "metadata": {"plan": plan},
+        }
 
     # -----------------------------
     # 7. Summarize result into human-readable reply

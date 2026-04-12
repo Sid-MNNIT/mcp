@@ -7,6 +7,15 @@ import json as _json
 ORCHESTRATOR_URL = "http://localhost:9000"
 _SERVICE_KEY = os.getenv("SERVICE_KEY", "abcd12345")
 
+# Pipelines that do multiple heavy operations (GPT + DB + API calls)
+# and need more than the default timeout
+HEAVY_PIPELINES = {
+    "interview_prep",    # resume fetch + email fetch + GPT
+    "job_search",        # MCP job search API
+    "job_recommendations", # profile fetch + job search + ranking
+    "rank_jobs",         # ranking logic
+}
+
 
 async def run_pipeline(
     *,
@@ -46,7 +55,9 @@ async def run_pipeline(
         "X-Service-Key": _SERVICE_KEY,
     }
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    timeout = 180 if pipeline_name in HEAVY_PIPELINES else 90
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(url, json=args, headers=headers)
 
     if response.status_code != 200:
