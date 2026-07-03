@@ -1,0 +1,24 @@
+# Force LF line endings for files that run inside Linux containers.
+# Without this, Git on Windows converts to CRLF and Docker chokes on
+# "/bin/sh^M: bad interpreter".
+*.sh          text eol=lf
+Dockerfile*   text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf
+
+# Sensible defaults for the rest
+*.js          text
+*.jsx         text
+*.ts          text
+*.tsx         text
+*.py          text
+*.json        text
+*.md          text
+*.css         text
+*.html        text
+
+# Binary — never touch
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ico binary
