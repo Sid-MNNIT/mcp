@@ -13,13 +13,57 @@ import asyncio
 
 
 def _unwrap_mcp_result(result, key):
-    """Handle the two response shapes MCP tools can produce."""
-    if isinstance(result, dict) and key in result:
+    """
+    Handle every MCP response shape we've seen:
+      1. Direct dict:                    {"message_refs": [...]}
+      2. Single text block:              {"type": "text", "text": "<json>"}
+      3. Content list (modern MCP):      {"content": [{"type": "text", "text": "<json>"}]}
+      4. Error text (tool raised):       {"content": [{"type": "text", "text": "Error: ..."}]}
+                                         or plain string
+    Empty/missing text is treated as no data, not as a hard crash — so the
+    caller can decide (e.g. "no new emails" is fine, "Gmail not connected"
+    surfaces with a clear error).
+    """
+    print(f"🔎 [MCP] raw result (first 300 chars): {str(result)[:300]}")
+
+    if not isinstance(result, dict):
+        raise ValueError(f"MCP result is not a dict: {type(result).__name__}")
+
+    # 1. Direct dict already has the key.
+    if key in result:
         return result[key]
-    if isinstance(result, dict) and result.get("type") == "text":
-        payload = json.loads(result["text"])
-        return payload.get(key)
-    raise ValueError(f"Unexpected MCP response (missing '{key}'): {result}")
+
+    # 2. Extract text payload from whichever wrapper we got.
+    text = None
+    if result.get("type") == "text":
+        text = result.get("text")
+    elif isinstance(result.get("content"), list) and result["content"]:
+        first = result["content"][0]
+        if isinstance(first, dict) and first.get("type") == "text":
+            text = first.get("text")
+
+    if not text or not text.strip():
+        # Tool ran but returned nothing — treat as no data for this key.
+        print(f"⚠️ [MCP] empty text payload for key '{key}'; full result: {result}")
+        return None
+
+    # If the text looks like a plain error message (starts with "Error"),
+    # surface it clearly.
+    stripped = text.strip()
+    if stripped.startswith(("Error", "error", "{'error'", "{\"error\"")) and not stripped.startswith("{"):
+        raise RuntimeError(f"MCP tool returned an error: {stripped}")
+
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"MCP tool returned non-JSON payload: {stripped[:200]!r}"
+        ) from e
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"MCP payload is not a dict: {payload!r}")
+
+    return payload.get(key)
 
 # ============================================================
 # Draft email preview (READ-ONLY PIPELINE)
