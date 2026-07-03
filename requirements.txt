@@ -15,6 +15,7 @@ langchain-mcp-adapters
 
 # ── LLM ────────────────────────────────────────────
 groq
+openai
 google-generativeai
 
 # ── Redis (conversation memory) ────────────────────
