@@ -87,7 +87,7 @@ services:
     region: singapore
     dockerfilePath: ./Dockerfile.python
     dockerCommand: ./start-orchestrator.sh
-    healthCheckPath: /docs        # FastAPI's built-in docs page
+    healthCheckPath: /health
     envVars:
       - key: BACKEND_URL
         sync: false        # e.g. https://jobsy-backend.onrender.com
@@ -105,6 +105,10 @@ services:
         sync: false
       - key: GROQ_API_KEY_1
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
 
   # ───────────────────────────────────────────────
   # 3. Python chat API (thin — proxies to orchestrator)
@@ -135,3 +139,7 @@ services:
         sync: false
       - key: GROQ_API_KEY_1
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini

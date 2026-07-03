@@ -51,6 +51,17 @@ if not SERVICE_KEY:
     raise RuntimeError("SERVICE_KEY not set")
 
 
+# Public paths that must NOT require the service key — Render's health
+# checks and unauthenticated humans hitting docs both need to pass through.
+PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json", "/"}
+
+
+@app.get("/health")
+async def health():
+    """Cheap health endpoint for Render's uptime pings."""
+    return {"status": "ok"}
+
+
 # ---------------------------
 # JWT middleware (SAFE)
 # ---------------------------
@@ -61,14 +72,19 @@ async def auth_middleware(request: Request, call_next):
     - User requests: JWT authentication
     - Cron requests: Service key + user ID in header
     """
+    # Bypass auth for health checks and public docs — Render's health
+    # pings never carry X-Service-Key and would otherwise 401 forever.
+    if request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+
     # Always get source (defaults to "user")
     source = request.headers.get("X-Request-Source", "user")
-    
+
     # Verify service key for ALL requests
     service_key = request.headers.get("X-Service-Key")
     if service_key != SERVICE_KEY:
         return JSONResponse(
-            {"error": "Invalid service key"}, 
+            {"error": "Invalid service key"},
             status_code=401
         )
     
