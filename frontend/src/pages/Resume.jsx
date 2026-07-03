@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "../components/layout/Sidebar";
 import TopHeader from "../components/layout/TopHeader";
-import { getCurrentUser, uploadResume, getMyResume, getResumeFileUrl, recalculateScore, deleteResume } from "../utils/api";
+import { uploadResume, getMyResume, getResumeFileUrl, recalculateScore, deleteResume } from "../utils/api";
+import { useAuth } from "../context/AuthContext";
 
 import "../styles/dashboard.css";
 import "../styles/resume.css";
@@ -53,7 +54,7 @@ function DeleteConfirmModal({ filename, onConfirm, onCancel, isDeleting }) {
 }
 
 export default function Resume() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
 
   // this is the local file user selects (actual File object)
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -76,20 +77,7 @@ export default function Resume() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting]           = useState(false);
 
-  // ----------------------------
-  // Load user
-  // ----------------------------
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const userRes = await getCurrentUser();
-        setUser(userRes.user);
-      } catch (err) {
-        console.error("Failed to load user:", err);
-      }
-    };
-    loadUser();
-  }, []);
+  // User is provided by AuthContext — no redundant /user/me fetch.
 
   // ----------------------------
   // Load existing resume from backend on page open

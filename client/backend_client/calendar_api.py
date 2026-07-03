@@ -1,7 +1,8 @@
+import os
 import httpx
 from datetime import datetime, timedelta
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 
 async def get_upcoming_calendar_events(jwt: str, days: int = 30) -> list:

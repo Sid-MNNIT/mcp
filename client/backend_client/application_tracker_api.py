@@ -1,8 +1,9 @@
+import os
 import httpx
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 
 async def _fetch_all_emails(jwt: str, limit: int = 500) -> list:

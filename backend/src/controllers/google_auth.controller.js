@@ -86,10 +86,13 @@ try {
   await user.save({ validateBeforeSave: false });
 
   /*Send cookies */
+  // Cross-origin in production (Vercel frontend + Render backend) requires
+  // sameSite:"none" + secure:true; strict works only when both share an origin.
+  const isProd = process.env.NODE_ENV === "production";
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: isProd,
+    sameSite: isProd ? "none" : "strict",
   };
 
   return res

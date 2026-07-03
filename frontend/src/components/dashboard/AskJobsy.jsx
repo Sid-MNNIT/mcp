@@ -3,7 +3,9 @@ import { Sparkles, SendHorizonal } from "lucide-react";
 
 // Calls Node proxy — Node's verifyJWT reads the httpOnly cookie and
 // forwards the JWT as Bearer to Python. Frontend never touches the cookie.
-const CHAT_URL = "http://localhost:5000/api/ai/chat";
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const CHAT_URL = `${BACKEND_URL}/api/ai/chat`;
 
 // Scoped to this browser session. Cleared on logout (TopHeader.jsx).
 function getOrCreateConversationId() {

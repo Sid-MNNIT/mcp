@@ -1,7 +1,8 @@
+import os
 from typing import Dict,Any
 import httpx
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 
 async def execute_ai_pipeline(

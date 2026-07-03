@@ -5,7 +5,9 @@ import Sidebar from "../components/layout/Sidebar";
 import "../styles/dashboard.css";
 import "../styles/askai.css";
 
-const CHAT_URL = "http://localhost:5000/api/ai/chat";
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const CHAT_URL = `${BACKEND_URL}/api/ai/chat`;
 
 const SUGGESTIONS = [
   "Summarize my recent rejection emails",

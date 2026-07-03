@@ -5,7 +5,7 @@ import { Email } from "../models/email.model.js";
 import { calendarService } from "../services/calendar.service.js";
 import jwt from "jsonwebtoken";
 
-const ORCHESTRATOR_URL = "http://localhost:9000";
+const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://localhost:9000";
 
 // Generate a short-lived JWT for the user so orchestrator accepts ingest requests
 function generateServiceJWT(user) {

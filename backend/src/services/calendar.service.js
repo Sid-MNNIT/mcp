@@ -17,6 +17,7 @@ import { CalendarEvent } from "../models/calendarEvent.model.js";
 import { googleCalendarService } from "./googleCalendar.service.js";
 import { User } from "../models/user.model.js";
 import { ApiError } from "../utils/apiError.js";
+import { sseService } from "./sse.service.js";
 
 // Groq client — lazy initialized so dotenv has time to load
 let _groq = null;
@@ -206,6 +207,13 @@ Email Body: ${text}
     );
 
     console.log(`💾 [CalendarService] Saved to MongoDB: ${eventDoc._id}`);
+
+    // Notify frontend immediately via SSE — no manual refresh needed
+    sseService.emit(String(userId), "calendar-updated", {
+      eventId: String(eventDoc._id),
+      company: details.company,
+      date:    details.date,
+    });
 
     // 4. Push to user's actual Google Calendar (so their phone/Google gets notifications)
     //    Non-fatal — if Google Calendar isn't connected or push fails,

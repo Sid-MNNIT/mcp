@@ -1,0 +1,41 @@
+# ──────────────────────────────────────────────────────────────
+# Shared Python image — used by BOTH Render services:
+#   1. jobsy-orchestrator (runs resume_mcp + orchestrator uvicorn)
+#   2. jobsy-chat         (runs chat_api uvicorn)
+#
+# Same image, different CMD at the Render service level.
+# Gmail MCP + Job Search MCP are stdio subprocesses spawned on demand
+# by the orchestrator — they don't need their own start commands.
+# ──────────────────────────────────────────────────────────────
+FROM python:3.12-slim
+
+# System deps for lxml (email parsing) and PyMuPDF (resume parsing)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libxml2-dev \
+        libxslt1-dev \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python deps first — layer stays cached when only code changes
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# spaCy model needed by resume_mcp entity extractor
+RUN python -m spacy download en_core_web_sm
+
+# Copy source
+COPY client/ ./client/
+COPY mcp_servers/ ./mcp_servers/
+
+# Startup helper used only by the orchestrator service
+COPY start-orchestrator.sh ./start-orchestrator.sh
+RUN chmod +x ./start-orchestrator.sh
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# No CMD here — each Render service overrides with its own command.

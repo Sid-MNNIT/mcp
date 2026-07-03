@@ -1,7 +1,8 @@
+import os
 import httpx
 from datetime import datetime, timedelta
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 
 async def fetch_emails_for_digest(jwt: str, period: str = "week") -> dict:

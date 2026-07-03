@@ -85,7 +85,7 @@ router.get("/callback", async (req, res) => {
       state,{isGmailConnected:true}
     )
 
-    return res.redirect("http://localhost:5173/dashboard");
+    return res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/dashboard`);
   } catch (err) {
     console.error("Gmail OAuth callback error:", err.message);
     return res.status(500).json({

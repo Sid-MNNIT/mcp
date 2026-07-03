@@ -15,6 +15,7 @@ import {
   parseISO,
 } from "date-fns";
 import { calendarService } from "../../services/calendar.service";
+import { useSSE } from "../../hooks/useSSE";
 
 export default function CalendarWidget() {
   const [view, setView] = useState("day");
@@ -46,6 +47,9 @@ export default function CalendarWidget() {
     window.addEventListener("calendar-event-deleted", handler);
     return () => window.removeEventListener("calendar-event-deleted", handler);
   }, [activeDate]);
+
+  // Re-fetch instantly when backend pushes a calendar-updated SSE event
+  useSSE({ "calendar-updated": () => fetchEventsForMonth() });
 
   // Check for OAuth callback success
   useEffect(() => {

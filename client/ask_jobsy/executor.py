@@ -4,7 +4,7 @@ import os
 import base64
 import json as _json
 
-ORCHESTRATOR_URL = "http://localhost:9000"
+ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:9000")
 _SERVICE_KEY = os.getenv("SERVICE_KEY", "abcd12345")
 
 # Pipelines that do multiple heavy operations (GPT + DB + API calls)

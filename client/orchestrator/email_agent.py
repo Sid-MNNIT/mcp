@@ -1,12 +1,25 @@
 from client.backend_client.agent_api import execute_tool
 from client.wrappers.gmail_wrapper import clean_email_body
 from client.orchestrator.email_prompt_builder import build_email_prompt
-from client.orchestrator.email_mapper import map_to_backend
+from client.orchestrator.email_mapper import (
+    map_to_backend,
+    map_to_backend_with_classification,
+)
 from client.backend_client.email_api import save_email, get_existing_email_ids
-from client.llm.llm_service import generate_email_reply
+from client.llm.llm_service import generate_email_reply, classify_emails_batch
 
 import json
 import asyncio
+
+
+def _unwrap_mcp_result(result, key):
+    """Handle the two response shapes MCP tools can produce."""
+    if isinstance(result, dict) and key in result:
+        return result[key]
+    if isinstance(result, dict) and result.get("type") == "text":
+        payload = json.loads(result["text"])
+        return payload.get(key)
+    raise ValueError(f"Unexpected MCP response (missing '{key}'): {result}")
 
 # ============================================================
 # Draft email preview (READ-ONLY PIPELINE)
@@ -105,60 +118,85 @@ async def send_email_with_approval(draft: dict, jwt: str):
 
 # ============================================================
 # Ingest and store emails (BACKGROUND PIPELINE)
+#
+# Two-phase design so we never spend bytes or LLM tokens on emails we
+# already have:
+#   Phase 1: list Gmail message IDs (cheap — no bodies).
+#   Phase 2: dedupe against the local DB.
+#   Phase 3: batch-fetch bodies for the fresh IDs (one HTTP call).
+#   Phase 4: batch-classify with Groq (one call per ~10 emails).
+#   Phase 5: persist.
 # ============================================================
 async def ingest_and_store_emails(jwt: str = None, user_id: str = None):
     if not jwt and not user_id:
         raise RuntimeError("Either JWT or user_id is required")
 
-    result = await execute_tool(
-        tool="get_recent_job_emails",
+    # ── Phase 1: list Gmail IDs (no bodies) ─────────────────────────────
+    refs_result = await execute_tool(
+        tool="list_recent_message_ids",
         args={},
         jwt=jwt,
-        user_id=user_id
+        user_id=user_id,
     )
+    refs = _unwrap_mcp_result(refs_result, "message_refs") or []
+    all_ids = [r["id"] for r in refs if r.get("id")]
 
-    # 🔓 MCP response unwrapping
-    if "emails" in result:
-        emails = result["emails"]
-    elif result.get("type") == "text":
-        payload = json.loads(result["text"])
-        emails = payload.get("emails", [])
-    else:
-        raise ValueError(f"Unexpected MCP response: {result}")
+    if not all_ids:
+        print("📭 [email_agent] Gmail returned no messages in the lookback window")
+        return []
 
-    stored = []
-
-    # ── Pre-filter: skip LLM for emails already in MongoDB ──────────────
-    # This is the key token-saver. On every incremental cron run the same
-    # 10 emails come back from Gmail. Without this check we'd call Groq
-    # for every one of them even though they're already stored.
-    all_ids = [e["id"] for e in emails if e.get("id")]
+    # ── Phase 2: dedupe against local DB BEFORE any body downloads ──────
     existing_ids = get_existing_email_ids(all_ids, jwt=jwt, user_id=user_id)
-    new_emails = [e for e in emails if e.get("id") not in existing_ids]
+    fresh_ids = [i for i in all_ids if i not in existing_ids]
 
-    skipped = len(emails) - len(new_emails)
+    skipped = len(all_ids) - len(fresh_ids)
     if skipped > 0:
-        print(f"⏭️  [email_agent] Skipping {skipped} already-stored emails (saved {skipped} Groq calls)")
-    # ─────────────────────────────────────────────────────────────────────
+        print(
+            f"⏭️  [email_agent] Skipping {skipped}/{len(all_ids)} "
+            f"already-stored emails (no Gmail body downloaded, no Groq call)"
+        )
 
-    for email in new_emails:
-        email["body"] = clean_email_body(email.get("body", ""))
+    if not fresh_ids:
+        return []
 
-        payload = map_to_backend(email)
+    # ── Phase 3: batched full-body fetch for fresh IDs ──────────────────
+    fetch_result = await execute_tool(
+        tool="fetch_emails_by_ids",
+        args={"message_ids": fresh_ids},
+        jwt=jwt,
+        user_id=user_id,
+    )
+    emails = _unwrap_mcp_result(fetch_result, "emails") or []
 
+    if not emails:
+        return []
+
+    # Clean HTML/quoted-reply noise from bodies before classification —
+    # keeps Groq prompts focused on the real content.
+    for e in emails:
+        e["body"] = clean_email_body(e.get("body", ""))
+
+    # ── Phase 4: batch-classify via Groq ────────────────────────────────
+    classifications = classify_emails_batch(emails)
+
+    # ── Phase 5: map + save ─────────────────────────────────────────────
+    stored = []
+    for email, classification in zip(emails, classifications):
+        payload = map_to_backend_with_classification(email, classification)
         if payload is None:
             continue
-         
 
-
-        # Normalize date
+        # Normalize date (defensive — mapper already isoformats)
         if hasattr(payload.get("date"), "isoformat"):
             payload["date"] = payload["date"].isoformat()
 
-        # 🔑 PASS JWT EXPLICITLY
         stored_email = save_email(payload, jwt=jwt, user_id=user_id)
         stored.append(stored_email)
 
+    print(
+        f"✅ [email_agent] Ingested {len(stored)} new job email(s) "
+        f"from {len(fresh_ids)} fresh Gmail message(s)"
+    )
     return stored
 
 

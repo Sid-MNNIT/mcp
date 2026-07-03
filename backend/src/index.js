@@ -6,7 +6,7 @@ import {app} from "./app.js";
 import express from "express";
 import mongoose from "mongoose";
 import connectDB from "./db/index.js";
-import { cronService } from "./services/cron.service.js";
+
 import { startEmailSyncJob } from "./jobs/emailSync.job.js";
 
 connectDB()

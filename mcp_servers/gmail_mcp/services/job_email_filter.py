@@ -34,6 +34,9 @@ BLOCKED_DOMAINS = [
     "freshersworld.com",
     "placementindia.com",
     "careerjet.co.in",
+
+    # Coaching/content marketing platforms
+    "propeers.in",
 ]
 
 # -----------------------------
@@ -185,6 +188,7 @@ def compute_job_score(email: dict) -> int:
 # Caught by sender name rather than domain
 # for cases where subdomain varies
 BLOCKED_SENDER_KEYWORDS = [
+    "propeers",
     "unstop",
     "dare2compete",
     "internshala",
@@ -196,15 +200,107 @@ BLOCKED_SENDER_KEYWORDS = [
 
 
 # -----------------------------
+# NOTIFICATION / NEWSLETTER PATTERNS
+# -----------------------------
+# These are noise sources that DO mention job keywords ("interview",
+# "hiring", "career") but never carry a real job communication.
+# Filtering them here avoids paying LLM tokens on obvious garbage.
+NOTIFICATION_SENDER_PATTERNS = [
+    # Google system notifications — security alerts, sign-ins, verifications
+    "no-reply@accounts.google.com",
+    "noreply@accounts.google.com",
+    "no-reply@google.com",
+    "noreply@google.com",
+
+    # Content / practice platforms that spam "interview prep" content
+    "leetcode.com",
+    "hackerrank.com",
+    "hackerearth.com",
+    "codechef.com",
+    "geeksforgeeks.org",
+    "interviewbit.com",
+
+    # Newsletter / blog platforms
+    "substack.com",
+    "@medium.com",
+    "@quora.com",
+    "mailchimp",
+    "sendgrid",
+    "constantcontact",
+
+    # Generic notification mailboxes
+    "notifications@",
+    "digest@",
+    "newsletter@",
+    "updates@",
+    "news@",
+    "no-reply@github.com",
+    "noreply@github.com",
+]
+
+NOTIFICATION_SUBJECT_PATTERNS = [
+    # Digest / newsletter markers
+    "weekly digest",
+    "daily digest",
+    "monthly digest",
+    "weekly update",
+    "daily update",
+    "newsletter",
+    "your weekly",
+    "your daily",
+
+    # Security / account notifications
+    "security alert",
+    "sign-in attempt",
+    "sign in attempt",
+    "verification code",
+    "verify your email",
+    "confirm your email",
+    "password reset",
+    "reset your password",
+    "two-factor",
+
+    # Transactional
+    "your receipt",
+    "invoice for",
+    "shipping confirmation",
+    "order confirmation",
+    "your order",
+
+    # Onboarding fluff
+    "welcome to",
+    "welcome back",
+
+    # Practice / contest platforms
+    "leetcode contest",
+    "leetcode weekly",
+    "coding contest",
+    "hackathon",
+]
+
+
+def _looks_like_notification(sender: str, subject: str) -> bool:
+    """True if the email is a newsletter / notification / system alert."""
+    if any(pat in sender for pat in NOTIFICATION_SENDER_PATTERNS):
+        return True
+    if any(pat in subject for pat in NOTIFICATION_SUBJECT_PATTERNS):
+        return True
+    return False
+
+
+# -----------------------------
 # FINAL DECISION FUNCTION
 # -----------------------------
 def is_job_related(email: dict, threshold: int = 2) -> bool:
     """
     Decide if an email should be passed to LLM for validation.
-    This is a FAST, recall-focused filter.
+    Recall-focused — accepts anything remotely job-adjacent — but
+    aggressively rejects known notification/newsletter patterns first
+    so obvious noise never reaches the LLM.
     """
 
     sender = (email.get("from") or "").lower()
+    subject = (email.get("subject") or "").lower()
 
     # Hard exclusion by domain
     if any(domain in sender for domain in BLOCKED_DOMAINS):
@@ -212,6 +308,11 @@ def is_job_related(email: dict, threshold: int = 2) -> bool:
 
     # Hard exclusion by sender keyword (catches subdomain variations)
     if any(keyword in sender for keyword in BLOCKED_SENDER_KEYWORDS):
+        return False
+
+    # Hard exclusion for newsletters / system notifications, even when
+    # they mention "interview" or "hiring" in the body.
+    if _looks_like_notification(sender, subject):
         return False
 
     score = compute_job_score(email)

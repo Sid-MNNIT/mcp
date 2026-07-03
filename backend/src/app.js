@@ -8,9 +8,23 @@ const app = express();
 // --------------------
 // Middleware
 // --------------------
+// Support a comma-separated list so a single env var can allow the
+// production frontend, localhost dev, and Vercel preview URLs at once.
+// Example:
+//   CORS_ORIGIN=https://jobsy.vercel.app,http://localhost:5173
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+    origin: (origin, cb) => {
+      // Allow same-origin/no-origin requests (Postman, curl, server-to-server).
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error(`CORS blocked: ${origin}`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Service-Key"],

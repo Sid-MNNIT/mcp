@@ -1,7 +1,58 @@
-const BASE_URL = "http://localhost:5000/api";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const BASE_URL = `${BACKEND_URL}/api`;
+
+/**
+ * Auth-aware fetch wrapper.
+ *
+ * On a 401 the wrapper transparently hits POST /api/user/refresh (which reads
+ * the refresh cookie, validates it, and issues a new access cookie) and
+ * retries the original request exactly once. If the refresh itself 401s,
+ * the failure surfaces normally — AuthContext then flips to
+ * "unauthenticated" and ProtectedRoute redirects to /auth.
+ *
+ * Prevents users from being silently logged out mid-session when the
+ * short-lived access token expires.
+ */
+let _refreshInFlight = null;
+
+async function _refreshTokens() {
+  // Coalesce concurrent refreshes so parallel requests share one call.
+  if (_refreshInFlight) return _refreshInFlight;
+
+  _refreshInFlight = fetch(`${BASE_URL}/user/refresh`, {
+    method: "POST",
+    credentials: "include",
+  })
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      _refreshInFlight = null;
+    });
+
+  return _refreshInFlight;
+}
+
+async function apiFetch(input, init = {}) {
+  const opts = { credentials: "include", ...init };
+
+  // Never retry the refresh endpoint itself — that would loop.
+  const isRefreshCall =
+    typeof input === "string" && input.endsWith("/user/refresh");
+
+  let res = await fetch(input, opts);
+
+  if (res.status === 401 && !isRefreshCall) {
+    const refreshed = await _refreshTokens();
+    if (refreshed) {
+      res = await fetch(input, opts);
+    }
+  }
+
+  return res;
+}
 
 export const signupUser = async (data) => {
-  const res = await fetch(`${BASE_URL}/user/register`, {
+  const res = await apiFetch(`${BASE_URL}/user/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -14,7 +65,7 @@ export const signupUser = async (data) => {
 };
 
 export const loginUser = async (data) => {
-  const res = await fetch(`${BASE_URL}/user/login`, {
+  const res = await apiFetch(`${BASE_URL}/user/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -27,7 +78,7 @@ export const loginUser = async (data) => {
 };
 
 export const getCurrentUser = async () => {
-  const res = await fetch(`${BASE_URL}/user/me`, {
+  const res = await apiFetch(`${BASE_URL}/user/me`, {
     credentials: "include", 
   });
 
@@ -35,7 +86,7 @@ export const getCurrentUser = async () => {
 };
 
 export const logoutUser = async () => {
-  const res = await fetch(`${BASE_URL}/user/logout`, {
+  const res = await apiFetch(`${BASE_URL}/user/logout`, {
     method: "POST",
     credentials: "include", 
   });
@@ -45,7 +96,7 @@ export const logoutUser = async () => {
 
 
 export const googleLogin = async (idToken) => {
-  const res = await fetch(`${BASE_URL}/auth/google`, {
+  const res = await apiFetch(`${BASE_URL}/auth/google`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -62,7 +113,7 @@ export const googleLogin = async (idToken) => {
 export const searchJobs = async (filters) => {
   const query = new URLSearchParams(filters).toString();
 
-  const res = await fetch(`${BASE_URL}/jobs/search?${query}`, {
+  const res = await apiFetch(`${BASE_URL}/jobs/search?${query}`, {
     credentials: "include",
   });
 
@@ -70,7 +121,7 @@ export const searchJobs = async (filters) => {
 };
 
 export const getJobCategories = async (country = "in") => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/jobs/categories?country=${country}`,
     {
       credentials: "include",
@@ -81,7 +132,7 @@ export const getJobCategories = async (country = "in") => {
 };
 
 export const getRecommendedJobs = async () => {
-  const res = await fetch(`${BASE_URL}/jobs/recommended`, {
+  const res = await apiFetch(`${BASE_URL}/jobs/recommended`, {
     credentials: "include",
   });
 
@@ -89,7 +140,7 @@ export const getRecommendedJobs = async () => {
 };
 
 export const saveJob = async (job) => {
-  const res = await fetch(`${BASE_URL}/jobs/save`, {
+  const res = await apiFetch(`${BASE_URL}/jobs/save`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -105,7 +156,7 @@ export const saveJob = async (job) => {
  * Get saved jobs
  */
 export const getSavedJobs = async () => {
-  const res = await fetch(`${BASE_URL}/jobs/saved`, {
+  const res = await apiFetch(`${BASE_URL}/jobs/saved`, {
     credentials: "include",
   });
 
@@ -116,7 +167,7 @@ export const getSavedJobs = async () => {
  * Unsave a job
  */
 export const unsaveJob = async (jobId) => {
-  const res = await fetch(`${BASE_URL}/jobs/saved/${jobId}`, {
+  const res = await apiFetch(`${BASE_URL}/jobs/saved/${jobId}`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -124,12 +175,11 @@ export const unsaveJob = async (jobId) => {
   return res.json();
 }
 export const startGmailSync = () => {
-
-  window.location.href = "http://localhost:5000/sync/google/gmail";
+  window.location.href = `${BACKEND_URL}/sync/google/gmail`;
 };
 
 export const rankJobsByRelevance = async (jobs) => {
-  const res = await fetch(`${BASE_URL}/jobs/rank`, {
+  const res = await apiFetch(`${BASE_URL}/jobs/rank`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -142,21 +192,21 @@ export const rankJobsByRelevance = async (jobs) => {
 };
 
 export const getGmailStatus= async()=>{
-  const res=await fetch(`${BASE_URL}/user/gmail-status`,{
+  const res=await apiFetch(`${BASE_URL}/user/gmail-status`,{
     credentials:"include"
   })
   return res.json()
 }
 
 export const getEmails= async()=>{
-  const res=await fetch(`${BASE_URL}/emails/fetch-email?sent=false`,{
+  const res=await apiFetch(`${BASE_URL}/emails/fetch-email?sent=false`,{
     credentials :"include"
   })
   return res.json();
 }
 
 export const getSentEmails = async () => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/emails/fetch-email?sent=true`,
     {
       credentials: "include",
@@ -173,7 +223,7 @@ export const getSentEmails = async () => {
 
 
 export const getStarredEmails = async () => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/emails/fetch-email?starred=true`,
     { credentials: "include" }
   );
@@ -182,7 +232,7 @@ export const getStarredEmails = async () => {
 };
 
 export const deleteEmail=async(emailId) => {
-  const res=await fetch(
+  const res=await apiFetch(
     `${BASE_URL}/emails/${emailId}`,{
       method:"DELETE",
       credentials:"include"
@@ -197,7 +247,7 @@ export const deleteEmail=async(emailId) => {
 
 
 export const toggleStarEmail = async (emailId) => {
-  const res = await fetch(`${BASE_URL}/emails/${emailId}/star`, {
+  const res = await apiFetch(`${BASE_URL}/emails/${emailId}/star`, {
     method: "PATCH",
     credentials: "include"
   });
@@ -212,7 +262,7 @@ export const toggleStarEmail = async (emailId) => {
 
 
 export const generateAiReplyPreview = async ({ messageId, tone }) => {
-  const res = await fetch(`${BASE_URL}/emails/email-reply-preview`, {
+  const res = await apiFetch(`${BASE_URL}/emails/email-reply-preview`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -252,7 +302,7 @@ export const generateAiReplyPreview = async ({ messageId, tone }) => {
 
 
 export const sendAiReply = async (draft) => {
-  const res = await fetch(`${BASE_URL}/emails/email-reply-send`, {
+  const res = await apiFetch(`${BASE_URL}/emails/email-reply-send`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -271,7 +321,7 @@ export const sendAiReply = async (draft) => {
 
 
 export const getEmailStats = async () => {
-  const res = await fetch(`${BASE_URL}/emails/fetch-email?sent=false`, {
+  const res = await apiFetch(`${BASE_URL}/emails/fetch-email?sent=false`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -285,7 +335,7 @@ export const getEmailStats = async () => {
 };
 
 export const syncEmails = async () => {
-  const res = await fetch(`${BASE_URL}/emails/email-sync`, {
+  const res = await apiFetch(`${BASE_URL}/emails/email-sync`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -308,7 +358,7 @@ export const uploadAvatar = async (file) => {
   const formData = new FormData();
   formData.append("avatar", file);
 
-  const res = await fetch(`${BASE_URL}/profile/me/avatar`, {
+  const res = await apiFetch(`${BASE_URL}/profile/me/avatar`, {
     method: "POST",
     credentials: "include",
     body: formData,
@@ -319,7 +369,7 @@ export const uploadAvatar = async (file) => {
 };
 
 export const getMyProfile = async () => {
-  const res = await fetch(`${BASE_URL}/profile/me`, {
+  const res = await apiFetch(`${BASE_URL}/profile/me`, {
     credentials: "include",
   });
 
@@ -333,7 +383,7 @@ export const getMyProfile = async () => {
 
 // Update logged-in user's profile
 export const updateMyProfile = async (payload) => {
-  const res = await fetch(`${BASE_URL}/profile/me`, {
+  const res = await apiFetch(`${BASE_URL}/profile/me`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -352,7 +402,7 @@ export const updateMyProfile = async (payload) => {
 
 //skills
 export const updateSkills = async (skills) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/skills`,
     {
       method: "PATCH",
@@ -370,7 +420,7 @@ export const updateSkills = async (skills) => {
 
 //experience
 export const addExperience = async (data) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/experience`,
     {
       method: "POST",
@@ -385,7 +435,7 @@ export const addExperience = async (data) => {
 };
 
 export const updateExperience = async (id, data) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/experience/${id}`,
     {
       method: "PATCH",
@@ -400,7 +450,7 @@ export const updateExperience = async (id, data) => {
 };
 
 export const deleteExperience = async (id) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/experience/${id}`,
     {
       method: "DELETE",
@@ -413,7 +463,7 @@ export const deleteExperience = async (id) => {
 };
 //education
 export const addEducation = async (data) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/education`,
     {
       method: "POST",
@@ -428,7 +478,7 @@ export const addEducation = async (data) => {
 };
 
 export const updateEducation = async (id, data) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/education/${id}`,
     {
       method: "PATCH",
@@ -443,7 +493,7 @@ export const updateEducation = async (id, data) => {
 };
 
 export const deleteEducation = async (id) => {
-  const res = await fetch(
+  const res = await apiFetch(
     `${BASE_URL}/profile/me/education/${id}`,
     {
       method: "DELETE",
@@ -457,7 +507,7 @@ export const deleteEducation = async (id) => {
 
 // Change password
 export const changePassword = async (currentPassword, newPassword) => {
-  const res = await fetch(`${BASE_URL}/profile/me/change-password`, {
+  const res = await apiFetch(`${BASE_URL}/profile/me/change-password`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -474,7 +524,7 @@ export const changePassword = async (currentPassword, newPassword) => {
   return res.json();
 };
 export const disconnectGmail = async () => {
-  const res = await fetch(` http://localhost:5000/sync/google/disconnect`, {
+  const res = await apiFetch(`${BACKEND_URL}/sync/google/disconnect`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -483,7 +533,7 @@ export const disconnectGmail = async () => {
 };
 
 export const reconnectGmail = () => {
-  window.location.href = "http://localhost:5000/sync/google/gmail";
+  window.location.href = `${BACKEND_URL}/sync/google/gmail`;
 };
 
 /* ===================================================== */
@@ -491,7 +541,7 @@ export const reconnectGmail = () => {
 /* ===================================================== */
 
 export const getNotificationPrefs = async () => {
-  const res = await fetch(`${BASE_URL}/notifications/preferences`, {
+  const res = await apiFetch(`${BASE_URL}/notifications/preferences`, {
     credentials: "include",
   });
   if (!res.ok) throw new Error("Failed to fetch notification preferences");
@@ -499,7 +549,7 @@ export const getNotificationPrefs = async () => {
 };
 
 export const updateNotificationPrefs = async (prefs) => {
-  const res = await fetch(`${BASE_URL}/notifications/preferences`, {
+  const res = await apiFetch(`${BASE_URL}/notifications/preferences`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -518,7 +568,7 @@ export const uploadResume = async (file) => {
   const formData = new FormData();
   formData.append("resume", file); // IMPORTANT: must match multer upload.single("resume")
 
-  const res = await fetch(`${BASE_URL}/resume`, {
+  const res = await apiFetch(`${BASE_URL}/resume`, {
     method: "POST",
     credentials: "include",
     body: formData,
@@ -533,7 +583,7 @@ export const uploadResume = async (file) => {
 };
 
 export const getMyResume = async () => {
-  const res = await fetch(`${BASE_URL}/resume`, {
+  const res = await apiFetch(`${BASE_URL}/resume`, {
     credentials: "include",
   });
 
@@ -549,7 +599,7 @@ export const getMyResume = async () => {
 export const getResumeFileUrl = () => `${BASE_URL}/resume/file`;
 
 export const deleteResume = async () => {
-  const res = await fetch(`${BASE_URL}/resume`, {
+  const res = await apiFetch(`${BASE_URL}/resume`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -565,7 +615,7 @@ export const deleteResume = async () => {
  * No file upload needed — uses what’s already in MongoDB.
  */
 export const recalculateScore = async () => {
-  const res = await fetch(`${BASE_URL}/resume/recalculate`, {
+  const res = await apiFetch(`${BASE_URL}/resume/recalculate`, {
     method: "POST",
     credentials: "include",
   });
@@ -581,7 +631,7 @@ export const recalculateScore = async () => {
 
 // ── Calendar APIs ──────────────────────────────
 export const getCalendarAuthUrl = async () => {
-  const res = await fetch(`${BASE_URL}/calendar/auth-url`, {
+  const res = await apiFetch(`${BASE_URL}/calendar/auth-url`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -590,7 +640,7 @@ export const getCalendarAuthUrl = async () => {
 
 export const getCalendarConnectionStatus = async () => {
   try {
-    const res = await fetch(`${BASE_URL}/calendar/status`, {
+    const res = await apiFetch(`${BASE_URL}/calendar/status`, {
       credentials: "include",
     });
     if (!res.ok) return { isConnected: false, calendarEmail: null };
@@ -609,7 +659,7 @@ export const getCalendarEvents = async (startDate, endDate) => {
     start: startDate.toISOString(),
     end: endDate.toISOString(),
   });
-  const res = await fetch(`${BASE_URL}/calendar/events?${params}`, {
+  const res = await apiFetch(`${BASE_URL}/calendar/events?${params}`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -617,7 +667,7 @@ export const getCalendarEvents = async (startDate, endDate) => {
 };
 
 export const getAllCalendarEvents = async () => {
-  const res = await fetch(`${BASE_URL}/calendar/events/all`, {
+  const res = await apiFetch(`${BASE_URL}/calendar/events/all`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -625,7 +675,7 @@ export const getAllCalendarEvents = async () => {
 };
 
 export const deleteCalendarEvent = async (eventId) => {
-  const res = await fetch(`${BASE_URL}/calendar/events/${eventId}`, {
+  const res = await apiFetch(`${BASE_URL}/calendar/events/${eventId}`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -634,7 +684,7 @@ export const deleteCalendarEvent = async (eventId) => {
 };
 
 export const disconnectCalendar = async () => {
-  const res = await fetch(`${BASE_URL}/calendar/disconnect`, {
+  const res = await apiFetch(`${BASE_URL}/calendar/disconnect`, {
     method: "DELETE",
     credentials: "include",
   });

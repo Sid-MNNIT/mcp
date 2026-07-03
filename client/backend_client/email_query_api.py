@@ -1,9 +1,10 @@
 # email_query_api.py
+import os
 import httpx
 from typing import Optional
 
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 
 async def query_emails_from_db(

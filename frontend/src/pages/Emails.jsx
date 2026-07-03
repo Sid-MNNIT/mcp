@@ -67,8 +67,10 @@ export default function Emails() {
 
   // SSE — auto-refresh emails when cron syncs new ones
   useEffect(() => {
+    const BACKEND_URL =
+      import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
     const es = new EventSource(
-      "http://localhost:5000/api/sse",
+      `${BACKEND_URL}/api/sse`,
       { withCredentials: true }   // sends httpOnly cookie for auth
     );
 

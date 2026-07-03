@@ -14,15 +14,15 @@ import {
   saveJob,
   unsaveJob,
   getSavedJobs,
-  getCurrentUser,
-  rankJobsByRelevance, 
+  rankJobsByRelevance,
 } from "../utils/api";
+import { useAuth } from "../context/AuthContext";
 
 const Jobs = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [viewMode, setViewMode] = useState("search");
 
   const [filters, setFilters] = useState({
@@ -44,15 +44,7 @@ const Jobs = () => {
   const [showJobDetails, setShowJobDetails] = useState(false);
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        const userRes = await getCurrentUser();
-        setUser(userRes.user);
-      } catch (err) {
-        console.error("Failed to load user:", err);
-      }
-    };
-    loadInitialData();
+    // User comes from AuthContext — no per-page /user/me fetch needed.
     loadSavedJobIds();
 
     if (searchParams.get("keywords")) {

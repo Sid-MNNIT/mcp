@@ -1,14 +1,10 @@
-import { useState, useEffect } from "react";
-import { getCurrentUser } from "../utils/api";
+import { useAuth } from "../context/AuthContext";
 
+/**
+ * Backwards-compatible hook that now reads from the global AuthContext
+ * instead of firing its own /user/me request on every page mount.
+ */
 export function useCurrentUser() {
-  const [fullName, setFullName] = useState("");
-
-  useEffect(() => {
-    getCurrentUser()
-      .then((res) => setFullName(res?.user?.fullname || ""))
-      .catch(() => {});
-  }, []);
-
-  return fullName;
+  const { user } = useAuth();
+  return user?.fullname || "";
 }

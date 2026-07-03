@@ -1,26 +1,38 @@
-# MCP
+# ── Web framework ──────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart
+httpx
+requests
+python-dotenv
+pydantic
+
+# ── MCP ────────────────────────────────────────────
+mcp
 fastmcp
 langchain-core
 langchain-mcp-adapters
 
-# Google APIs
+# ── LLM ────────────────────────────────────────────
+groq
+google-generativeai
+
+# ── Redis (conversation memory) ────────────────────
+redis
+
+# ── Google APIs ────────────────────────────────────
 google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
-google-generativeai  # ← Added for Gemini API
 
-# Email parsing
+# ── Email parsing ──────────────────────────────────
 beautifulsoup4
 lxml
 html5lib
 python-dateutil
 
-# HTTP + env
-requests
-python-dotenv
-
-#Resume Parsing
+# ── Resume parsing ─────────────────────────────────
 pymupdf
 pdfplumber
 spacy

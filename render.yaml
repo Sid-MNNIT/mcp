@@ -1,0 +1,134 @@
+# ──────────────────────────────────────────────────────────────
+# Render deployment manifest
+#
+# Three services from one repo:
+#   1. jobsy-backend      — Node/Express
+#   2. jobsy-orchestrator — Python orchestrator + resume_mcp + stdio MCPs
+#   3. jobsy-chat         — Python chat_api
+#
+# All three run on the free tier. Envs marked `sync: false` will NOT
+# be pulled from render.yaml — you paste them into the Render dashboard
+# per service. That keeps secrets out of git.
+#
+# After first deploy, come back and set the *_URL vars to the actual
+# URLs Render assigns.
+# ──────────────────────────────────────────────────────────────
+
+services:
+  # ───────────────────────────────────────────────
+  # 1. Node backend
+  # ───────────────────────────────────────────────
+  - type: web
+    name: jobsy-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile.backend
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: DB_NAME
+        value: ai_career_copilot
+      - key: ACCESS_TOKEN_SECRET
+        sync: false
+      - key: ACCESS_TOKEN_EXPIRY
+        value: 1d
+      - key: REFRESH_TOKEN_SECRET
+        sync: false
+      - key: REFRESH_TOKEN_EXPIRY
+        value: 7d
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_SYNC_ID
+        sync: false
+      - key: GOOGLE_SYNC_SECRET
+        sync: false
+      - key: GOOGLE_SYNC_URI
+        sync: false        # e.g. https://jobsy-backend.onrender.com/sync/google/callback
+      - key: GOOGLE_CALENDAR_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CALENDAR_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALENDAR_REDIRECT_URI
+        sync: false        # e.g. https://jobsy-backend.onrender.com/api/calendar/oauth-callback
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SERVICE_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false        # e.g. https://jobsy.vercel.app,http://localhost:5173
+      - key: FRONTEND_URL
+        sync: false        # e.g. https://jobsy.vercel.app
+      - key: ORCHESTRATOR_URL
+        sync: false        # e.g. https://jobsy-orchestrator.onrender.com
+      - key: CHAT_URL
+        sync: false        # e.g. https://jobsy-chat.onrender.com
+      - key: ASK_JOBSY_URL
+        sync: false        # same as CHAT_URL
+
+  # ───────────────────────────────────────────────
+  # 2. Python orchestrator (bundles resume_mcp + gmail/job_search stdio MCPs)
+  # ───────────────────────────────────────────────
+  - type: web
+    name: jobsy-orchestrator
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile.python
+    dockerCommand: ./start-orchestrator.sh
+    healthCheckPath: /docs        # FastAPI's built-in docs page
+    envVars:
+      - key: BACKEND_URL
+        sync: false        # e.g. https://jobsy-backend.onrender.com
+      - key: BACKEND_BASE_URL
+        sync: false        # same value (legacy env name in email_api.py)
+      - key: NODE_API_URL
+        sync: false        # same value (legacy env name in entrypoint.py)
+      - key: ORCHESTRATOR_URL
+        sync: false        # own URL — used by ask_jobsy/executor.py
+      - key: SERVICE_KEY
+        sync: false        # MUST match backend
+      - key: REDIS_URL
+        sync: false        # rediss://default:...@...upstash.io:6379
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_API_KEY_1
+        sync: false
+
+  # ───────────────────────────────────────────────
+  # 3. Python chat API (thin — proxies to orchestrator)
+  # ───────────────────────────────────────────────
+  - type: web
+    name: jobsy-chat
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile.python
+    dockerCommand: uvicorn client.ask_jobsy.chat_api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: BACKEND_URL
+        sync: false
+      - key: BACKEND_BASE_URL
+        sync: false
+      - key: NODE_API_URL
+        sync: false
+      - key: ORCHESTRATOR_URL
+        sync: false        # points at jobsy-orchestrator
+      - key: SERVICE_KEY
+        sync: false        # MUST match backend
+      - key: REDIS_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_API_KEY_1
+        sync: false

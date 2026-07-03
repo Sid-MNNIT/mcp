@@ -46,9 +46,11 @@ export default function AvatarModal({ currentAvatar, onClose, onSave }) {
         // uploadAvatar posts the file AND saves avatarUrl to MongoDB in the controller
         const res = await uploadAvatar(file);
         // Normalize the returned relative path to a full URL for display
+        const BACKEND_URL =
+          import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
         const fullUrl = res.avatarUrl.startsWith("http")
           ? res.avatarUrl
-          : `http://localhost:5000${res.avatarUrl}`;
+          : `${BACKEND_URL}${res.avatarUrl}`;
         onSave(fullUrl);
       } else {
         // For URL tab: pass the URL up — Profile.jsx will call updateMyProfile to persist it

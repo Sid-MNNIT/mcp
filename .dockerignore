@@ -1,0 +1,41 @@
+# Secrets — pass via Render env vars, never bake into image
+.env
+.env.*
+**/.env
+
+# Local Python venv
+jobsy/
+
+# Local Node modules
+node_modules/
+**/node_modules/
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Build output
+dist/
+dist-ssr/
+frontend/dist/
+
+# Git + IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / dev files
+**/test/
+**/tests/
+*.md
+!README.md

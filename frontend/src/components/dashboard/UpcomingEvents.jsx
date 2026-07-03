@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { format, parseISO, isAfter, startOfDay, addDays } from "date-fns";
 import { calendarService } from "../../services/calendar.service";
 import { deleteCalendarEvent } from "../../utils/api";
+import { useSSE } from "../../hooks/useSSE";
 
 function getCompanyInitial(str = "") {
   return str.charAt(0).toUpperCase() || "?";
@@ -370,6 +371,9 @@ export default function UpcomingEvents() {
     loadEvents();
   }, []);
 
+  // Re-fetch instantly when backend pushes a calendar-updated SSE event
+  useSSE({ "calendar-updated": () => loadEvents() });
+
   // Close on Escape key
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") setSelectedEvent(null); };
@@ -386,7 +390,7 @@ export default function UpcomingEvents() {
       const fetched = await calendarService.getEvents(start, end);
 
       const upcoming = fetched
-        .filter((ev) => isAfter(parseISO(ev.date), new Date()))
+        .filter((ev) => isAfter(parseISO(ev.date), startOfDay(new Date())))
         .sort((a, b) => new Date(a.date) - new Date(b.date))
         .slice(0, 5)
         .map((ev) => {

@@ -1,7 +1,7 @@
 import fetch from "node-fetch";
 
-const ORCHESTRATOR_URL = "http://localhost:9000";
-const CHAT_URL = "http://localhost:9001";
+const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://localhost:9000";
+const CHAT_URL = process.env.CHAT_URL || "http://localhost:9001";
 
 export async function callMCP({
   tool,

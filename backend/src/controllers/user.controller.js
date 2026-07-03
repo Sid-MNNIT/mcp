@@ -116,10 +116,14 @@ const { accessToken, refreshToken } = tokens;
     "-password -refreshToken"
   );
 
+  // In production the frontend and backend are on different origins
+  // (jobsy.vercel.app vs jobsy-backend.onrender.com) so cookies must be
+  // sameSite:"none" + secure:true or browsers won't send them.
+  const isProd = process.env.NODE_ENV === "production";
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-     sameSite: "strict",
+    secure: isProd,
+    sameSite: isProd ? "none" : "strict",
   };
 
   return res
@@ -146,10 +150,14 @@ const logoutUser = asyncHandler(async (req, res) => {
     $unset: { refreshToken: "" },
   });
 
+  // In production the frontend and backend are on different origins
+  // (jobsy.vercel.app vs jobsy-backend.onrender.com) so cookies must be
+  // sameSite:"none" + secure:true or browsers won't send them.
+  const isProd = process.env.NODE_ENV === "production";
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-     sameSite: "strict",
+    secure: isProd,
+    sameSite: isProd ? "none" : "strict",
   };
 
   return res
@@ -210,10 +218,14 @@ if (!tokens) {
 const { accessToken, refreshToken } = tokens;
 
 
+  // In production the frontend and backend are on different origins
+  // (jobsy.vercel.app vs jobsy-backend.onrender.com) so cookies must be
+  // sameSite:"none" + secure:true or browsers won't send them.
+  const isProd = process.env.NODE_ENV === "production";
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-     sameSite: "strict",
+    secure: isProd,
+    sameSite: isProd ? "none" : "strict",
   };
 
   return res

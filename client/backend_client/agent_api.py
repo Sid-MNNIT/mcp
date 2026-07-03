@@ -2,7 +2,7 @@ import httpx
 import os
 SERVICE_KEY = os.getenv("SERVICE_KEY", "")
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 async def execute_tool(tool: str, args: dict, jwt: str = None, user_id: str = None):
     """

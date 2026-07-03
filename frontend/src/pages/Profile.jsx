@@ -55,11 +55,13 @@ export default function Profile() {
         const profile = await getMyProfile();
 
         // Normalize relative avatar paths to full URL
+        const BACKEND_URL =
+          import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
         const rawAvatar = profile.avatar || "";
         const resolvedAvatar = rawAvatar.startsWith("http")
           ? rawAvatar
           : rawAvatar
-          ? `http://localhost:5000${rawAvatar}`
+          ? `${BACKEND_URL}${rawAvatar}`
           : "";
 
         setUser({
