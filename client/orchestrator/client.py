@@ -139,7 +139,10 @@ async def execute_agent(request: Request):
     user_id = body.get("userId")
     jwt = request.state.jwt
 
+    print(f"⚙️  [agent/execute] tool={tool_name} user_id={user_id} args_keys={list(args.keys())}")
+
     if not tool_name or not user_id:
+        print(f"❌ [agent/execute] missing tool or userId")
         raise HTTPException(status_code=400, detail="tool and userId required")
 
     # Tools expect args.userId → already provided by Node
@@ -148,14 +151,21 @@ async def execute_agent(request: Request):
     mcp = await get_mcp_client()
     tools = await mcp.get_tools()
 
+    tool_names = [t.name for t in tools]
+    print(f"⚙️  [agent/execute] discovered {len(tools)} tools: {tool_names}")
+
     tool = next((t for t in tools if t.name == tool_name), None)
     if not tool:
-        raise HTTPException(status_code=404, detail="Tool not found")
+        print(f"❌ [agent/execute] tool '{tool_name}' NOT in discovered list; giving up")
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found. Available: {tool_names}")
 
     try:
+        print(f"⚙️  [agent/execute] invoking {tool_name} …")
         result = await tool.ainvoke(args)
-        return result[0]
+        print(f"⚙️  [agent/execute] {tool_name} returned type={type(result).__name__}; first 300 chars: {str(result)[:300]}")
+        return result[0] if isinstance(result, (list, tuple)) and len(result) > 0 else result
     except Exception as e:
+        print(f"❌ [agent/execute] {tool_name} raised {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Tool execution failed: {str(e)}"
