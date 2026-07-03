@@ -22,6 +22,7 @@ services:
     name: jobsy-backend
     runtime: docker
     plan: free
+    branch: running
     region: singapore
     dockerfilePath: ./Dockerfile.backend
     healthCheckPath: /
@@ -82,6 +83,7 @@ services:
     name: jobsy-orchestrator
     runtime: docker
     plan: free
+    branch: running
     region: singapore
     dockerfilePath: ./Dockerfile.python
     dockerCommand: ./start-orchestrator.sh
@@ -111,6 +113,7 @@ services:
     name: jobsy-chat
     runtime: docker
     plan: free
+    branch: running
     region: singapore
     dockerfilePath: ./Dockerfile.python
     dockerCommand: uvicorn client.ask_jobsy.chat_api:app --host 0.0.0.0 --port $PORT
