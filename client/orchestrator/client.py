@@ -231,9 +231,24 @@ async def email_sync(request: Request):
         jwt = request.state.jwt
         if not jwt:
             raise HTTPException(status_code=401, detail="JWT missing")
-        
-        print(f"👤 [USER] Email sync with JWT")
-        result = await ingest_and_store_emails(jwt=jwt)
+
+        # Extract user_id from JWT so it mirrors the cron path exactly
+        # (cron always passes user_id explicitly). Without this, the
+        # payload to /api/emails/execute lacks the userId field, which
+        # caused the manual "Sync Gmail" to fail while cron worked.
+        import base64 as _b64
+        import json as _j
+        user_id = None
+        try:
+            payload_part = jwt.split(".")[1]
+            payload_part += "=" * (4 - len(payload_part) % 4)
+            decoded = _j.loads(_b64.b64decode(payload_part).decode("utf-8"))
+            user_id = decoded.get("_id") or decoded.get("id") or decoded.get("sub")
+        except Exception as e:
+            print(f"⚠️ [USER] failed to decode JWT for user_id: {e}")
+
+        print(f"👤 [USER] Email sync — jwt=yes user_id={user_id}")
+        result = await ingest_and_store_emails(jwt=jwt, user_id=user_id)
     
     elif source == "cron":
         # CRON flow: no JWT, uses user_id from header
