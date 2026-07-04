@@ -2,15 +2,29 @@ from datetime import datetime, timedelta
 from utils.email_utils import extract_body, extract_headers
 
 
-def fetch_recent_messages(service, lookback_days=7, max_results=50):
+def fetch_recent_messages(service, lookback_days=14, max_results=15):
     """
     Cheap first call — asks Gmail for the message IDs matching the query.
     No bodies are downloaded here; each entry is just {id, threadId}.
+
+    Uses a broad job-keyword query so Gmail returns only likely-relevant
+    messages, letting a small max_results cover users with dense inboxes.
     """
 
     after_date = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y/%m/%d")
 
-    query = f"(in:inbox OR in:sent) after:{after_date}"
+    # Gmail's search: fold job-related keywords into the query so we don't
+    # burn our 15-message budget on marketing / newsletters. Anything not
+    # matching still gets caught on the next tick if it has the right
+    # keyword — and the LLM does final filtering downstream.
+    job_signal = (
+        "(interview OR internship OR offer OR hiring OR recruit OR "
+        "placement OR shortlisted OR \"application received\" OR "
+        "\"we regret\" OR opportunity OR careers OR \"pre-placement\" OR "
+        "\"campus\" OR \"drive\" OR \"assessment\" OR CPI)"
+    )
+
+    query = f"(in:inbox OR in:sent) after:{after_date} {job_signal}"
 
     response = service.users().messages().list(
         userId="me",
