@@ -462,8 +462,16 @@ export default function UpcomingEvents() {
     return (
       <div className="card event-card">
         <h3>Upcoming Events</h3>
-        <div style={{ padding: "1.5rem 0", textAlign: "center", color: "#94a3b8", fontSize: "0.85rem" }}>
-          No upcoming events in the next 30 days 🎉
+        <div
+          style={{
+            padding: "1.75rem 0",
+            textAlign: "center",
+            color: "#334155",
+            fontSize: "0.95rem",
+            fontWeight: 600,
+          }}
+        >
+          Your schedule is clear
         </div>
       </div>
     );
