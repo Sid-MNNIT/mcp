@@ -41,7 +41,9 @@ async def execute_tool(tool: str, args: dict, jwt: str = None, user_id: str = No
     if user_id:
         payload["userId"] = user_id
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    # Bumped 60s → 120s. On free-tier CPU, Gmail fetch + Groq classification
+    # for even 15 messages can push past a minute.
+    async with httpx.AsyncClient(timeout=120) as client:
         res = await client.post(
             f"{BASE_URL}/api/emails/execute",
             json=payload,

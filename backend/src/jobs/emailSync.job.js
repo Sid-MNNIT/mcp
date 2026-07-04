@@ -38,9 +38,10 @@ async function ingestEmailsForUser(user) {
         "X-User-Id": user._id.toString(),
       },
       body: JSON.stringify({ userId: user._id }),
-      // Generous timeout — Gmail MCP + Groq can be slow
-      // but don't wait forever for a dead token
-      signal: AbortSignal.timeout(90_000),
+      // Generous timeout — Gmail MCP + Groq can be slow on Render's
+      // free tier. 150s comfortably fits: fetch (~10s) + classification
+      // for 15 messages (~20s) + saves, with headroom for cold starts.
+      signal: AbortSignal.timeout(150_000),
     });
     if (!res.ok) {
       const errorText = await res.text();

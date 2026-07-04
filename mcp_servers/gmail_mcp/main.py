@@ -40,8 +40,12 @@ mcp = FastMCP("gmail-mcp")
 def list_recent_message_ids(
     userId: str,
     lookback_days: int = 7,
-    max_results: int = 30,
+    max_results: int = 15,
 ):
+    # NOTE: dropped default from 30 → 15 so each sync stays under the
+    # 60s httpx timeout on Render free tier. Users with heavy inboxes
+    # were timing out during the batched Groq classification step.
+    # Increase this once we move off free tier.
     """
     Cheap first-phase call for the sync pipeline: returns Gmail message
     references without downloading bodies. The orchestrator uses these IDs
