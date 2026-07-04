@@ -56,9 +56,13 @@ if not SERVICE_KEY:
 PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json", "/"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
-    """Cheap health endpoint for Render's uptime pings."""
+    """
+    Cheap health endpoint for Render's uptime pings AND UptimeRobot.
+    Accepts HEAD too — UptimeRobot's default probe method is HEAD, and
+    a GET-only endpoint returns 405 which UptimeRobot logs as "down".
+    """
     return {"status": "ok"}
 
 

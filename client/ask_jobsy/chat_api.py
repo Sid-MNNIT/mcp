@@ -51,6 +51,10 @@ async def ask_jobsy(request: Request, body: ChatRequest):
     return response
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
+    """
+    Health endpoint accepts HEAD too — UptimeRobot uses HEAD by default,
+    and a GET-only endpoint returns 405 which UptimeRobot logs as down.
+    """
     return {"status": "ok"}
