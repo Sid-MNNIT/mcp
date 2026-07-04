@@ -109,6 +109,10 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: gpt-4o-mini
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_API_KEY
+        sync: false
 
   # ───────────────────────────────────────────────
   # 3. Python chat API (thin — proxies to orchestrator)
