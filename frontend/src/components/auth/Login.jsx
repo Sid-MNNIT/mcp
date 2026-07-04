@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { loginUser, googleLogin } from "../../utils/api";
 import { GoogleLogin } from "@react-oauth/google";
+import { useAuth } from "../../context/AuthContext";
 
 
 export default function Login({ onSwitchToSignup }) {
@@ -11,6 +12,7 @@ export default function Login({ onSwitchToSignup }) {
   });
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { refresh: refreshAuth } = useAuth();
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -23,6 +25,12 @@ export default function Login({ onSwitchToSignup }) {
       const response = await loginUser(form);
 
       if (response.success) {
+        // Re-fetch /user/me so AuthContext flips to "authenticated"
+        // BEFORE ProtectedRoute evaluates the /dashboard route.
+        // Without this the previous "unauthenticated" state stays,
+        // ProtectedRoute redirects back to /auth, and the login
+        // "silently loops" — a race the DevTools throttling masks.
+        await refreshAuth();
         navigate("/dashboard");
       } else {
         alert(response.message || "Login failed");
@@ -41,8 +49,10 @@ export default function Login({ onSwitchToSignup }) {
       const response = await googleLogin(credentialResponse.credential);
 
       if (response.success) {
+        // Same race fix as email/password login — update AuthContext
+        // state before navigating so ProtectedRoute sees us logged in.
+        await refreshAuth();
         navigate("/dashboard");
-        console.log("User:", response.user);
       } else {
         alert(response.message || "Google login failed");
       }

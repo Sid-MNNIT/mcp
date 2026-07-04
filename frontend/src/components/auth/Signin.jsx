@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { signupUser, googleLogin } from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Signin({ onSwitchToLogin }) {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { refresh: refreshAuth } = useAuth();
 
   const [form, setForm] = useState({
     fullname: "",
@@ -56,8 +58,11 @@ export default function Signin({ onSwitchToLogin }) {
       const response = await googleLogin(credentialResponse.credential);
 
       if (response.success) {
+        // Refresh AuthContext BEFORE navigating so ProtectedRoute
+        // sees us as authenticated. Without this, /dashboard bounces
+        // us back to /auth even though cookies were set correctly.
+        await refreshAuth();
         navigate("/dashboard");
-        console.log("User:", response.user);
       } else {
         alert(response.message || "Google signup failed");
       }
