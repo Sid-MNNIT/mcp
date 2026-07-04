@@ -78,15 +78,29 @@ async function autoScheduleInterviews(user) {
   }
 }
 
+// Skip inactive users. See identical rationale in ../../jobs/emailSync.job.js.
+const ACTIVE_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 // Main job
 async function runEmailSyncJob() {
   console.log("🔄 [CronJob] Running email sync...");
   try {
-    const users = await User.find({ isGmailConnected: true });
+    const users = await User.find({
+      isGmailConnected: true,
+      lastLogin: { $gte: new Date(Date.now() - ACTIVE_USER_WINDOW_MS) },
+    });
+
+    if (users.length === 0) {
+      console.log("💤 [CronJob] No recently-active users — nothing to do.");
+      return;
+    }
+
+    console.log(`👥 [CronJob] Processing ${users.length} active user(s)`);
+
     for (const user of users) {
       // Step 1: Ingest new emails from Gmail into MongoDB
       await ingestEmailsForUser(user);
-      // Step 2: Process INTERVIEW emails → CalendarEvent (pure MongoDB + Groq, no Google Calendar API)
+      // Step 2: Process INTERVIEW emails → CalendarEvent
       await autoScheduleInterviews(user);
     }
     console.log("✅ [CronJob] Done.");
@@ -95,8 +109,10 @@ async function runEmailSyncJob() {
   }
 }
 
-// Export — call this once at server start
+// Export — call this once at server start.
+// Cadence dropped 2 min → 10 min to keep Render free-tier CPU available
+// for live user requests.
 export function startEmailSyncJob() {
-  console.log("⏰ [CronJob] Email sync registered — every 2 minutes");
-  cron.schedule("*/2 * * * *", runEmailSyncJob);
+  console.log("⏰ [CronJob] Email sync registered — every 10 minutes");
+  cron.schedule("*/10 * * * *", runEmailSyncJob);
 }

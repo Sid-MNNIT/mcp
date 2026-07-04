@@ -109,11 +109,31 @@ async function autoScheduleInterviews(user) {
   }
 }
 
+// Only sync users who have been active in the last 24h.
+// Rationale on Render free tier:
+//   - Idle users waste scarce CPU on 0.1 vCPU instances.
+//   - Someone who hasn't logged in for a day probably isn't waiting on
+//     fresh email data — they'll pull it themselves when they return.
+//   - Skipping them keeps the cron tick short and the container CPU
+//     available for live user requests.
+const ACTIVE_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 // Main job
 async function runEmailSyncJob() {
   console.log("🔄 [CronJob] Running email sync...");
   try {
-    const users = await User.find({ isGmailConnected: true });
+    const users = await User.find({
+      isGmailConnected: true,
+      lastLogin: { $gte: new Date(Date.now() - ACTIVE_USER_WINDOW_MS) },
+    });
+
+    if (users.length === 0) {
+      console.log("💤 [CronJob] No recently-active users — nothing to do.");
+      return;
+    }
+
+    console.log(`👥 [CronJob] Processing ${users.length} active user(s)`);
+
     for (const user of users) {
       // Step 1: Ingest new emails from Gmail into MongoDB
       await ingestEmailsForUser(user);
@@ -126,8 +146,12 @@ async function runEmailSyncJob() {
   }
 }
 
-// Export — call this once at server start
+// Export — call this once at server start.
+// Cadence dropped from every 2 min → every 10 min. On Render free tier
+// the 2-min cadence was eating ~30s of the 120s window every tick,
+// starving live user requests. 10 min is still frequent enough that
+// users perceive email as "auto-syncing".
 export function startEmailSyncJob() {
-  console.log("⏰ [CronJob] Email sync registered — every 2 minutes");
-  cron.schedule("*/2 * * * *", runEmailSyncJob);
+  console.log("⏰ [CronJob] Email sync registered — every 10 minutes");
+  cron.schedule("*/10 * * * *", runEmailSyncJob);
 }
