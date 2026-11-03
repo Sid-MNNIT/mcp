@@ -14,6 +14,7 @@ HEAVY_PIPELINES = {
     "job_search",        # MCP job search API
     "job_recommendations", # profile fetch + job search + ranking
     "rank_jobs",         # ranking logic
+    "react_agent",       # LLM loop that can call several tools
 }
 
 
@@ -25,7 +26,7 @@ async def run_pipeline(
     jwt: str,
 ) -> Dict[str, Any]:
     """
-    Execute a planner-decided pipeline by calling the orchestrator directly.
+    Execute a pipeline by calling the orchestrator directly.
     Must NOT call back through Node (/api/ai/execute) — that creates an infinite loop.
     """
 

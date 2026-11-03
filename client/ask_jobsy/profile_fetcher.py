@@ -2,7 +2,7 @@
 Profile Fetcher
 ===============
 Fetches the logged-in user's profile from the Node backend
-so the planner can use skills/location to auto-fill job search args.
+so the agent can use skills/location in its answers.
 """
 
 import httpx
@@ -16,7 +16,7 @@ NODE_API = os.getenv("NODE_API_URL", "http://localhost:5000")
 async def fetch_user_profile(jwt: str) -> dict:
     """
     Calls GET /api/profile/me with the user's JWT.
-    Returns a simplified profile dict for use in the planner.
+    Returns a simplified profile dict for use in the agent.
     Returns empty dict on failure (non-blocking).
     """
     try:

@@ -171,13 +171,17 @@ async def react_agent(request: Request):
     body = await request.json()
     text = body.get("text")
     user_id = body.get("userId")
+    jwt = request.state.jwt
+
+    if not jwt:
+        raise HTTPException(status_code=401, detail="JWT missing")
 
     if not text or not user_id:
         raise HTTPException(status_code=400, detail="text and userId required")
 
     try:
-        response = await run_react_agent(text, user_id)
-        return {"response": response}
+        response, tools_used = await run_react_agent(text, user_id, jwt, body.get("history"))
+        return {"response": response, "tools_used": tools_used}
     except Exception as e:
         print(f"❌ [agent/react] {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"Agent failed: {str(e)}")

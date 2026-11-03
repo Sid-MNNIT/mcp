@@ -20,7 +20,7 @@ There are three services plus the MCP servers they talk to:
 
 ```
 React (Vite)  ──►  Node/Express backend  ──►  Chat API (FastAPI)
-  frontend          auth, profile, MongoDB       planner + memory
+  frontend          auth, profile, MongoDB       memory
                     Google OAuth, email sync          │
                            ▲                          ▼
                            └────────────  Orchestrator (FastAPI)
@@ -35,20 +35,20 @@ React (Vite)  ──►  Node/Express backend  ──►  Chat API (FastAPI)
 | --- | --- |
 | `frontend/` | React 19 + Vite app (dashboard, jobs, emails, resume, settings) |
 | `backend/` | Node/Express API with MongoDB, Google OAuth, Cloudinary uploads and the email sync cron job |
-| `client/ask_jobsy/` | The chat API: planner, executor, Redis-backed conversation memory |
-| `client/orchestrator/` | The pipelines that do the real work (email, jobs, calendar, resume agents) |
+| `client/ask_jobsy/` | The chat API and Redis-backed conversation memory |
+| `client/orchestrator/` | The ReAct agent and the pipelines that do the real work (email, jobs, calendar, resume) |
 | `client/llm/` | OpenAI and Groq clients, prompts, job matching and ranking |
 | `mcp_servers/` | `gmail_mcp`, `job_search_mcp`, `resume_mcp`, `calendar_mcp` |
 | `docs/` | Notes on architecture, agent flow and MCP contracts |
 
-### How a chat message is handled today
+### How a chat message is handled
 
-1. The message goes to the chat API, along with recent history from Redis and the user's profile.
-2. A planner (GPT-4o-mini with a strict JSON prompt) decides whether it's plain conversation or an action, and which pipeline to run.
-3. The executor calls that pipeline on the orchestrator, which uses the MCP tools to do the work.
-4. The result is turned into a reply and saved to the conversation history.
+1. The message goes to the chat API, along with recent history from Redis.
+2. The chat API passes it to a LangGraph ReAct agent running in the orchestrator (`client/orchestrator/react_agent.py`).
+3. The agent has every MCP tool (Gmail, job search) plus the email, calendar, application and interview-prep pipelines bound to the LLM as tools. It decides which to call, reads the results, and keeps going until it can answer.
+4. The reply is sent back and a short note about what happened is saved to the conversation history.
 
-So right now the LLM chooses *what* to run, but each pipeline's steps are fixed in code. Making Jobsy a proper tool-calling agent (where the model decides which tools to call, in what order, and reacts to what comes back) is the next big step. See the roadmap below.
+The agent can only draft email replies, it can't send them or create calendar events yet.
 
 ## Tech stack
 
@@ -103,7 +103,7 @@ Then open http://localhost:5173.
 
 ## Roadmap
 
-- [ ] Turn the planner/pipeline setup into a real tool-calling agent using LangGraph, with the MCP servers exposed directly as tools
+- [x] Real tool-calling agent using LangGraph, with the MCP servers exposed directly as tools
 - [ ] Human approval step before anything risky, like sending an email
 - [ ] Move conversation memory to a proper checkpointer
 - [ ] Stream agent progress to the chat UI
