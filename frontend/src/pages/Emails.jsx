@@ -174,7 +174,7 @@ const handleSync = async () => {
 
     if (result.reason === "gmail-not-connected") {
       alert("Please connect your Gmail first");
-    } else if (result.reason === "queue-unavailable") {
+    } else if (result.reason === "queue-unavailable" || result.reason === "queue-full") {
       alert("Sync is busy right now, please try again in a moment");
     }
 

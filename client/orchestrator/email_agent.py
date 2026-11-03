@@ -173,20 +173,26 @@ async def send_email_with_approval(draft: dict, jwt: str):
 #   Phase 4: batch-classify with Groq (one call per ~10 emails).
 #   Phase 5: persist.
 # ============================================================
-async def fetch_new_emails(jwt: str = None, user_id: str = None):
+async def fetch_new_emails(jwt: str = None, user_id: str = None, message_ids: list = None):
     """
     Phases 1-3: list Gmail IDs, drop the ones we already have, then download
     and clean the rest. Returns a list of emails (empty if nothing is new).
+
+    message_ids: pass the IDs when the caller already knows them (the history
+    sync does). Without it, Phase 1 searches Gmail.
     """
     # ── Phase 1: list Gmail IDs (no bodies) ─────────────────────────────
-    refs_result = await execute_tool(
-        tool="list_recent_message_ids",
-        args={},
-        jwt=jwt,
-        user_id=user_id,
-    )
-    refs = _unwrap_mcp_result(refs_result, "message_refs") or []
-    all_ids = [r["id"] for r in refs if r.get("id")]
+    if message_ids is not None:
+        all_ids = message_ids
+    else:
+        refs_result = await execute_tool(
+            tool="list_recent_message_ids",
+            args={},
+            jwt=jwt,
+            user_id=user_id,
+        )
+        refs = _unwrap_mcp_result(refs_result, "message_refs") or []
+        all_ids = [r["id"] for r in refs if r.get("id")]
 
     if not all_ids:
         print("📭 [email_agent] Gmail returned no messages in the lookback window")
@@ -267,12 +273,34 @@ async def ingest_and_store_emails(jwt: str = None, user_id: str = None):
 #   1. save_new_emails_as_pending  -> Gmail to DB, no Groq, type PENDING
 #   2. classify_pending_emails     -> Groq decides the real type
 # ============================================================
-async def save_new_emails_as_pending(jwt: str = None, user_id: str = None, last_history_id: str = None):
-    if not jwt and not user_id:
-        raise RuntimeError("Either JWT or user_id is required")
+async def list_message_ids_to_check(jwt: str = None, user_id: str = None, last_history_id: str = None):
+    """
+    Decides which Gmail messages this sync should look at.
+    Returns (message_ids, history_id_to_remember, mode).
 
-    # Cheap check first. Read the historyId BEFORE fetching, so a mail that
-    # arrives while we work changes the number and is picked up next time.
+      "history": we have a historyId from the last sync, so Gmail tells us
+                 exactly which messages were added since. Old mail is never
+                 listed again.
+      "query":   first sync, or Gmail forgot that old history. Search the
+                 last few days instead (the old way).
+    """
+    if last_history_id:
+        history_result = await execute_tool(
+            tool="list_new_message_ids",
+            args={"start_history_id": str(last_history_id)},
+            jwt=jwt,
+            user_id=user_id,
+        )
+        sync = _unwrap_mcp_result(history_result, "sync") or {}
+
+        if not sync.get("expired"):
+            message_ids = [r["id"] for r in sync.get("message_refs", [])]
+            return message_ids, str(sync["historyId"]), "history"
+
+        print("⚠️  [email_agent] Gmail history too old — falling back to a normal search")
+
+    # Read the historyId BEFORE searching, so a mail that arrives while we
+    # work is above this number and is picked up by the next history sync.
     history_result = await execute_tool(
         tool="get_history_id",
         args={},
@@ -281,17 +309,40 @@ async def save_new_emails_as_pending(jwt: str = None, user_id: str = None, last_
     )
     history_id = str(_unwrap_mcp_result(history_result, "historyId"))
 
-    if last_history_id and history_id == str(last_history_id):
-        print(f"⏭️  [email_agent] Mailbox unchanged since last sync (historyId {history_id})")
-        return {"skipped": True, "historyId": history_id, "saved": 0}
+    refs_result = await execute_tool(
+        tool="list_recent_message_ids",
+        args={},
+        jwt=jwt,
+        user_id=user_id,
+    )
+    refs = _unwrap_mcp_result(refs_result, "message_refs") or []
+    return [r["id"] for r in refs if r.get("id")], history_id, "query"
 
-    emails = await fetch_new_emails(jwt=jwt, user_id=user_id)
+
+async def save_new_emails_as_pending(jwt: str = None, user_id: str = None, last_history_id: str = None):
+    if not jwt and not user_id:
+        raise RuntimeError("Either JWT or user_id is required")
+
+    message_ids, history_id, mode = await list_message_ids_to_check(
+        jwt=jwt, user_id=user_id, last_history_id=last_history_id
+    )
+
+    if not message_ids:
+        print(f"⏭️  [email_agent] Nothing new in Gmail ({mode} sync, historyId {history_id})")
+        return {"skipped": True, "historyId": history_id, "saved": 0, "mode": mode}
+
+    print(f"📨 [email_agent] {len(message_ids)} message(s) to check ({mode} sync)")
+    emails = await fetch_new_emails(jwt=jwt, user_id=user_id, message_ids=message_ids)
 
     for email in emails:
         save_email(map_to_pending_payload(email), jwt=jwt, user_id=user_id)
 
-    print(f"💾 [email_agent] Saved {len(emails)} new email(s) as PENDING")
-    return {"skipped": False, "historyId": history_id, "saved": len(emails)}
+    by_rules = sum(1 for e in emails if e.get("ruleType"))
+    print(
+        f"💾 [email_agent] Saved {len(emails)} new email(s): "
+        f"{by_rules} labelled by rules, {len(emails) - by_rules} PENDING for the LLM"
+    )
+    return {"skipped": False, "historyId": history_id, "saved": len(emails), "mode": mode}
 
 
 async def classify_pending_emails(jwt: str = None, user_id: str = None):

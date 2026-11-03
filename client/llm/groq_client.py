@@ -21,7 +21,8 @@ class GroqKeyRotator:
     def __init__(self):
         self._lock = threading.Lock()
         self._keys = self._load_keys()
-        self._clients = [Groq(api_key=k) for k in self._keys]
+        # 30s per call, one built-in retry: a hung Groq call must not block a sync forever
+        self._clients = [Groq(api_key=k, timeout=30.0, max_retries=1) for k in self._keys]
         self._index = 0
         self._cooldowns: dict[int, float] = {}  # index → timestamp when it cools down
         print(f"🔑 [Groq] Loaded {len(self._keys)} API key(s)")

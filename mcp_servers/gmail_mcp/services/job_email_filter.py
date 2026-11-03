@@ -288,6 +288,124 @@ def _looks_like_notification(sender: str, subject: str) -> bool:
     return False
 
 
+def _is_noise(sender: str, subject: str) -> bool:
+    """True for senders/subjects we never want, whatever the body says."""
+
+    # Hard exclusion by domain
+    if any(domain in sender for domain in BLOCKED_DOMAINS):
+        return True
+
+    # Hard exclusion by sender keyword (catches subdomain variations)
+    if any(keyword in sender for keyword in BLOCKED_SENDER_KEYWORDS):
+        return True
+
+    # Hard exclusion for newsletters / system notifications, even when
+    # they mention "interview" or "hiring" in the body.
+    return _looks_like_notification(sender, subject)
+
+
+# -----------------------------
+# STEP 1: CHEAP CHECK (headers only, no body downloaded yet)
+# -----------------------------
+def passes_header_check(email: dict) -> bool:
+    """
+    Runs on the small "metadata" version of a message (From, Subject and the
+    bulk-mail headers). False means "definitely not a job email", so we never
+    download its body.
+    """
+    sender = (email.get("from") or "").lower()
+    subject = (email.get("subject") or "").lower()
+
+    if _is_noise(sender, subject):
+        return False
+
+    # Mass mailings carry a List-Unsubscribe / Precedence: bulk header. Real
+    # recruiter mail normally does not, but some company systems add it, so
+    # we only trust this signal for senders we do not already trust.
+    if email.get("isBulk") and not any(d in sender for d in TRUSTED_DOMAINS + ATS_DOMAINS):
+        return False
+
+    return True
+
+
+# -----------------------------
+# RULE-BASED LABEL (skips the LLM)
+# -----------------------------
+# Recruitment systems send very predictable mail. When the sender is one of
+# them AND the wording is clear, the rules can name the type themselves.
+ATS_DOMAINS = [
+    "greenhouse.io",
+    "lever.co",
+    "myworkdayjobs.com",
+    "workday.com",
+    "successfactors.com",
+    "smartrecruiters.com",
+]
+
+RULE_PHRASES = {
+    "REJECTION": [
+        "we regret to inform",
+        "not moving forward",
+        "move forward with other candidates",
+        "decided to move forward with candidates",
+        "not selected",
+        "profile does not align",
+    ],
+    "OFFER": [
+        "offer letter",
+        "we are pleased to offer",
+        "we are happy to offer",
+        "happy to offer you",
+        "pleased to extend an offer",
+    ],
+    "INTERVIEW": [
+        "interview invitation",
+        "invite you to interview",
+        "interview scheduled",
+        "schedule an interview",
+        "like to invite you",
+        "phone screen",
+        "technical interview",
+        "virtual interview",
+        "video interview",
+        "round of interview",
+    ],
+    # Weakest group: "thank you for applying" also opens most rejections,
+    # so it only counts when none of the groups above matched.
+    "JOB": [
+        "thank you for applying",
+        "we received your application",
+        "application received",
+    ],
+}
+
+
+def rule_based_type(email: dict):
+    """
+    Returns "REJECTION", "OFFER", "INTERVIEW" or "JOB" when the rules are
+    sure, otherwise None (and the email goes to the LLM as before).
+    """
+    sender = (email.get("from") or "").lower()
+    if not any(domain in sender for domain in ATS_DOMAINS):
+        return None
+
+    # Subject + start of the body only, so quoted old messages do not confuse us
+    text = f"{email.get('subject') or ''} {(email.get('body') or '')[:2000]}".lower()
+
+    matched = [
+        mail_type
+        for mail_type, phrases in RULE_PHRASES.items()
+        if any(phrase in text for phrase in phrases)
+    ]
+    strong = [t for t in matched if t != "JOB"]
+
+    if len(strong) == 1:
+        return strong[0]
+    if not strong and "JOB" in matched:
+        return "JOB"
+    return None  # nothing matched, or two strong types matched: let the LLM decide
+
+
 # -----------------------------
 # FINAL DECISION FUNCTION
 # -----------------------------
@@ -302,17 +420,7 @@ def is_job_related(email: dict, threshold: int = 2) -> bool:
     sender = (email.get("from") or "").lower()
     subject = (email.get("subject") or "").lower()
 
-    # Hard exclusion by domain
-    if any(domain in sender for domain in BLOCKED_DOMAINS):
-        return False
-
-    # Hard exclusion by sender keyword (catches subdomain variations)
-    if any(keyword in sender for keyword in BLOCKED_SENDER_KEYWORDS):
-        return False
-
-    # Hard exclusion for newsletters / system notifications, even when
-    # they mention "interview" or "hiring" in the body.
-    if _looks_like_notification(sender, subject):
+    if _is_noise(sender, subject):
         return False
 
     score = compute_job_score(email)

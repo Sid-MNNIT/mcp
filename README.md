@@ -57,7 +57,8 @@ Emails sync in the background while someone is actually using the app, not on a 
 1. The frontend (`useEmailAutoSync`) asks the backend to sync when the app opens, when the tab becomes visible again, and every 5 minutes while it is visible. The Sync button asks too, with higher priority.
 2. The backend (`POST /api/emails/sync-trigger`) checks the user: Gmail connected, not synced in the last 5 minutes. If so it adds one job per user to the BullMQ queue `email-sync` and answers straight away.
 3. A worker (`backend/src/jobs/emailSync.job.js`) takes jobs 2 at a time (`EMAIL_SYNC_CONCURRENCY`) and at most 10 a minute (`EMAIL_SYNC_JOBS_PER_MINUTE`) to stay under Groq's rate limit. For each job it asks the orchestrator to:
-   - check Gmail's `historyId`; if it hasn't changed since the last sync, stop,
+   - ask Gmail only for the messages added since the last sync (Gmail history); the very first sync, or one where Gmail has forgotten that old history, searches the last few days instead,
+   - drop obvious junk from the headers alone (newsletters, blocked senders, Gmail's promotions/social/forums tabs) and label clear recruiter-system mail by rules,
    - save new emails as `PENDING` and tell the browser (SSE event `emails-updated`, phase `fetched`),
    - classify them with Groq, hide the ones that aren't job related, and tell the browser again (phase `classified`).
 4. Failed jobs are retried 3 times with a growing delay. A revoked Gmail token is not retried, the user is just marked as disconnected.

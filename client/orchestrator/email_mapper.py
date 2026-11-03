@@ -46,10 +46,11 @@ def _finalize_payload(email, classification):
 def map_to_pending_payload(email):
     """
     Payload for an email that has not been classified yet.
-    It is saved with type PENDING and classified in a later step.
+    It is saved with type PENDING and classified in a later step, unless the
+    Gmail filter already labelled it with rules ("ruleType"). Those skip the LLM.
     """
     payload = _finalize_payload(email, {"is_relevant": True, "type": "OTHER"})
-    payload["type"] = "PENDING"
+    payload["type"] = email.get("ruleType") or "PENDING"
     return payload
 
 

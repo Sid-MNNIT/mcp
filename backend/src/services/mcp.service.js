@@ -3,6 +3,10 @@ import fetch from "node-fetch";
 const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://localhost:9000";
 const CHAT_URL = process.env.CHAT_URL || "http://localhost:9001";
 
+// Never wait on the orchestrator forever. Slightly shorter than the 120s
+// timeout the Python side uses, so the Python side sees our error first.
+const MCP_TIMEOUT_MS = Number(process.env.MCP_TIMEOUT_MS) || 100_000;
+
 export async function callMCP({
   tool,
   args = {},
@@ -47,7 +51,8 @@ const url = isPipeline
   const res = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
   });
 
   if (!res.ok) {

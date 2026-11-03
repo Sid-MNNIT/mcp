@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import os
+import asyncio
 
 from client.mcp.client import get_mcp_client, close_mcp_client
 from client.orchestrator.react_agent import run_react_agent
@@ -713,6 +714,17 @@ async def email_digest_pipeline(request: Request):
 # EMAIL INGEST PIPELINE
 # ============================================================
 
+# Back pressure for the queue sync: only a few sync steps run at once.
+# When all slots are taken we answer 503 straight away, and the Node worker
+# retries later with its normal backoff, instead of stacking up requests here.
+SYNC_SLOTS = asyncio.Semaphore(int(os.getenv("SYNC_SLOTS", "3")))
+
+
+def _reject_if_busy():
+    if SYNC_SLOTS.locked():
+        raise HTTPException(status_code=503, detail="Orchestrator busy, try again later")
+
+
 @app.post("/pipelines/ingest-emails")
 async def ingest_emails_endpoint(request: Request):
     """
@@ -728,14 +740,16 @@ async def ingest_emails_endpoint(request: Request):
     if not user_id:
         raise HTTPException(status_code=400, detail="userId required")
 
-    if source == "cron":
-        print(f"🤖 [CRON] Ingest emails for user: {user_id}")
-        result = await save_new_emails_as_pending(jwt=None, user_id=user_id, last_history_id=last_history_id)
-    else:
-        if not jwt:
-            raise HTTPException(status_code=401, detail="JWT missing")
-        print(f"👤 [USER] Ingest emails for user: {user_id}")
-        result = await save_new_emails_as_pending(jwt=jwt, user_id=user_id, last_history_id=last_history_id)
+    _reject_if_busy()
+    async with SYNC_SLOTS:
+        if source == "cron":
+            print(f"🤖 [CRON] Ingest emails for user: {user_id}")
+            result = await save_new_emails_as_pending(jwt=None, user_id=user_id, last_history_id=last_history_id)
+        else:
+            if not jwt:
+                raise HTTPException(status_code=401, detail="JWT missing")
+            print(f"👤 [USER] Ingest emails for user: {user_id}")
+            result = await save_new_emails_as_pending(jwt=jwt, user_id=user_id, last_history_id=last_history_id)
 
     print(f"📤 Ingest complete: saved {result['saved']} emails for user {user_id}")
     return {"success": True, "userId": user_id, **result}
@@ -755,14 +769,16 @@ async def classify_emails_endpoint(request: Request):
     if not user_id:
         raise HTTPException(status_code=400, detail="userId required")
 
-    if source == "cron":
-        print(f"🤖 [CRON] Classify emails for user: {user_id}")
-        result = await classify_pending_emails(jwt=None, user_id=user_id)
-    else:
-        if not jwt:
-            raise HTTPException(status_code=401, detail="JWT missing")
-        print(f"👤 [USER] Classify emails for user: {user_id}")
-        result = await classify_pending_emails(jwt=jwt, user_id=user_id)
+    _reject_if_busy()
+    async with SYNC_SLOTS:
+        if source == "cron":
+            print(f"🤖 [CRON] Classify emails for user: {user_id}")
+            result = await classify_pending_emails(jwt=None, user_id=user_id)
+        else:
+            if not jwt:
+                raise HTTPException(status_code=401, detail="JWT missing")
+            print(f"👤 [USER] Classify emails for user: {user_id}")
+            result = await classify_pending_emails(jwt=jwt, user_id=user_id)
 
     return {"success": True, "userId": user_id, **result}
 

@@ -9,6 +9,12 @@ const SYNC_GAP_MS = 5 * 60 * 1000;
 // The Sync button may go sooner, but a short wait stops button spamming.
 const MANUAL_GAP_MS = 30 * 1000;
 
+// Back pressure: the queue may not grow without limit. When this many jobs
+// are already waiting we say "busy" instead of piling up more work.
+// The Sync button gets a little extra room so it still works when busy.
+const AUTO_QUEUE_LIMIT = Number(process.env.EMAIL_SYNC_QUEUE_LIMIT) || 200;
+const MANUAL_QUEUE_LIMIT = AUTO_QUEUE_LIMIT + 50;
+
 // In BullMQ a smaller number means "run first".
 const MANUAL_PRIORITY = 1;
 const AUTO_PRIORITY = 10;
@@ -66,6 +72,14 @@ async function addSyncJob(userId, trigger) {
       await existingJob.changePriority({ priority: MANUAL_PRIORITY });
     }
     return { queued: false, reason: "already-queued" };
+  }
+
+  // Bounded queue: refuse new work when too many jobs are already waiting.
+  const counts = await emailSyncQueue.getJobCounts("waiting", "prioritized", "delayed");
+  const waiting = counts.waiting + counts.prioritized + counts.delayed;
+  if (waiting >= (isManual ? MANUAL_QUEUE_LIMIT : AUTO_QUEUE_LIMIT)) {
+    console.warn(`🚧 [EmailSyncQueue] Queue full (${waiting} waiting) — not queuing user ${userId}`);
+    return { queued: false, reason: "queue-full" };
   }
 
   await emailSyncQueue.add(

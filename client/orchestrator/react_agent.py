@@ -23,6 +23,7 @@ EXCLUDED_MCP_TOOLS = {
     "send_email",
     "list_recent_message_ids",
     "get_history_id",
+    "list_new_message_ids",
     "fetch_emails_by_ids",
     "get_recent_job_emails",
 }

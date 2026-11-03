@@ -6,11 +6,13 @@ from email.message import EmailMessage
 from gmail_context import get_gmail_service
 from services.gmail_service import (
     fetch_recent_messages,
+    fetch_new_message_refs,
     get_full_message,
     parse_email,
+    parse_metadata,
     batch_get_messages,
 )
-from services.job_email_filter import is_job_related
+from services.job_email_filter import is_job_related, passes_header_check, rule_based_type
 
 
 def _log(msg: str) -> None:
@@ -62,6 +64,20 @@ def list_recent_message_ids(
 
 
 # ---------------------------
+# READ: only the messages added since the last sync (incremental sync)
+# ---------------------------
+@mcp.tool()
+def list_new_message_ids(userId: str, start_history_id: str):
+    """
+    Returns the Gmail message IDs added since start_history_id, plus the new
+    historyId to remember. If Gmail has dropped that old history it returns
+    expired=True and the caller should use list_recent_message_ids instead.
+    """
+    service = get_gmail_service(userId)
+    return {"sync": fetch_new_message_refs(service, start_history_id)}
+
+
+# ---------------------------
 # READ: current mailbox historyId (used to skip syncs when nothing changed)
 # ---------------------------
 @mcp.tool()
@@ -82,15 +98,39 @@ def get_history_id(userId: str):
 @mcp.tool()
 def fetch_emails_by_ids(userId: str, message_ids: list):
     """
-    Second-phase call: downloads the given message IDs in ONE batched
-    HTTP request (replacing N sequential round-trips) and returns only
-    the ones that pass the job-related filter.
+    Second-phase call, in two steps (both batched, one HTTP request each):
+      1. download only the headers and drop obvious noise (newsletters,
+         blocked senders, bulk mail) without ever fetching its body
+      2. download the full body of the rest and apply the keyword filter
+
+    Emails that a recruitment system sent with very clear wording also get
+    a "ruleType" (e.g. "INTERVIEW"), so the orchestrator can skip the LLM.
     """
     if not message_ids:
         return {"emails": []}
 
     service = get_gmail_service(userId)
 
+    # Step 1: headers only
+    meta_responses, _ = batch_get_messages(
+        service,
+        message_ids,
+        format_type="metadata",
+        metadata_headers=["From", "Subject", "List-Unsubscribe", "Precedence"],
+    )
+    wanted_ids = []
+    for msg_id in message_ids:
+        meta = meta_responses.get(msg_id)
+        # If the header fetch failed we still try the full fetch below.
+        if meta is None or passes_header_check(parse_metadata(meta)):
+            wanted_ids.append(msg_id)
+
+    _log(f"[gmail_mcp] header check kept {len(wanted_ids)}/{len(message_ids)} message(s)")
+    message_ids = wanted_ids
+    if not message_ids:
+        return {"emails": []}
+
+    # Step 2: full bodies for the survivors
     responses, errors = batch_get_messages(
         service, message_ids, format_type="full"
     )
@@ -106,6 +146,7 @@ def fetch_emails_by_ids(userId: str, message_ids: list):
             continue
         parsed = parse_email(msg)
         if is_job_related(parsed):
+            parsed["ruleType"] = rule_based_type(parsed)
             emails.append(parsed)
 
     return {"emails": emails}

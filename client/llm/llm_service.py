@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from client.llm.groq_client import get_groq_client, groq_chat_with_fallback
 
@@ -125,10 +126,17 @@ def classify_emails_batch(emails: list, batch_size: int = 10) -> list:
     if not emails:
         return []
 
+    chunks = [
+        emails[start:start + batch_size]
+        for start in range(0, len(emails), batch_size)
+    ]
+
+    # Chunks do not depend on each other, so classify a few at the same time.
+    # pool.map keeps the results in the same order as the input.
     results = []
-    for chunk_start in range(0, len(emails), batch_size):
-        chunk = emails[chunk_start:chunk_start + batch_size]
-        results.extend(_classify_chunk(chunk))
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for chunk_result in pool.map(_classify_chunk, chunks):
+            results.extend(chunk_result)
     return results
 
 
