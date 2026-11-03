@@ -1,11 +1,22 @@
 import cron from "node-cron";
 import fetch from "node-fetch";
+import pLimit from "p-limit";
 import { User } from "../models/user.model.js";
 import { Email } from "../models/email.model.js";
 import { calendarService } from "../services/calendar.service.js";
 import jwt from "jsonwebtoken";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://localhost:9000";
+
+// Cap concurrent ingest calls to the orchestrator so we don't fire off
+// unbounded parallel requests when the user list grows.
+const ingestLimit = pLimit(5);
+
+// Overlap guards — each job skips its own tick if the previous tick of
+// THAT SAME job is still running. They are independent of each other so
+// a slow ingest run never blocks the (cheap, fast) scheduler run.
+let isIngestRunning = false;
+let isSchedulerRunning = false;
 
 // Generate a short-lived JWT for the user so orchestrator accepts ingest requests
 function generateServiceJWT(user) {
@@ -110,6 +121,7 @@ async function autoScheduleInterviews(user) {
   }
 }
 
+<<<<<<< HEAD
 // Only sync users who have been active in the last 24h.
 // Rationale on Render free tier:
 //   - Idle users waste scarce CPU on 0.1 vCPU instances.
@@ -122,6 +134,39 @@ const ACTIVE_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Main job
 async function runEmailSyncJob() {
   console.log("🔄 [CronJob] Running email sync...");
+=======
+// Job A: Gmail ingest only (expensive — orchestrator HTTP call, up to 90s/user)
+async function runIngestJob() {
+  if (isIngestRunning) {
+    console.log("⏭️ [CronJob:Ingest] Previous ingest run still in progress — skipping this tick");
+    return;
+  }
+  isIngestRunning = true;
+  console.log("🔄 [CronJob:Ingest] Running email ingest...");
+  try {
+    const users = await User.find({ isGmailConnected: true });
+    await Promise.all(
+      users.map((user) => ingestLimit(() => ingestEmailsForUser(user)))
+    );
+    console.log("✅ [CronJob:Ingest] Done.");
+  } catch (err) {
+    console.error("❌ [CronJob:Ingest] Error:", err.message);
+  } finally {
+    isIngestRunning = false;
+  }
+}
+
+// Job B: interview → calendar event scheduling only (cheap — pure MongoDB + Groq,
+// no orchestrator call). Runs on its own faster cadence so interview emails get
+// calendar events quickly, independent of how often the (slower) ingest job runs.
+async function runSchedulerJob() {
+  if (isSchedulerRunning) {
+    console.log("⏭️ [CronJob:Scheduler] Previous scheduler run still in progress — skipping this tick");
+    return;
+  }
+  isSchedulerRunning = true;
+  console.log("🔄 [CronJob:Scheduler] Running interview auto-scheduler...");
+>>>>>>> 8dbe323 (Gmail Workflow Changes)
   try {
     const users = await User.find({
       isGmailConnected: true,
@@ -136,14 +181,13 @@ async function runEmailSyncJob() {
     console.log(`👥 [CronJob] Processing ${users.length} active user(s)`);
 
     for (const user of users) {
-      // Step 1: Ingest new emails from Gmail into MongoDB
-      await ingestEmailsForUser(user);
-      // Step 2: Process INTERVIEW emails → CalendarEvent (pure MongoDB + Groq, no Google Calendar API)
       await autoScheduleInterviews(user);
     }
-    console.log("✅ [CronJob] Done.");
+    console.log("✅ [CronJob:Scheduler] Done.");
   } catch (err) {
-    console.error("❌ [CronJob] Error:", err.message);
+    console.error("❌ [CronJob:Scheduler] Error:", err.message);
+  } finally {
+    isSchedulerRunning = false;
   }
 }
 
