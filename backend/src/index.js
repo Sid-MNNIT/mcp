@@ -7,7 +7,8 @@ import express from "express";
 import mongoose from "mongoose";
 import connectDB from "./db/index.js";
 
-import { startEmailSyncJob } from "./jobs/emailSync.job.js";
+import { startEmailSyncWorker, stopEmailSyncWorker } from "./jobs/emailSync.job.js";
+import { closeEmailSyncQueue } from "./services/emailSyncQueue.service.js";
 
 connectDB()
 .then(async ()=>{
@@ -56,11 +57,7 @@ connectDB()
 
     app.listen(process.env.PORT || 5000,()=>{
         console.log(`Server is running on port ${process.env.PORT || 5000}`);
-        startEmailSyncJob(); 
-        
-         
-      console.log("🚀 Initializing cron jobs...");
-      //cronService.startEmailSyncJob();
+        startEmailSyncWorker();
     });
 })
 .catch((err)=>{
@@ -69,20 +66,14 @@ connectDB()
 });
 
 
-process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM received: shutting down gracefully');
-    cronService.stopAllJobs();
-    mongoose.connection.close(() => {
-      console.log('📦 Database connection closed');
-      process.exit(0);
-    });
-  });
-  
-  process.on('SIGINT', () => {
-    console.log('⚠️  SIGINT received: shutting down gracefully');
-    cronService.stopAllJobs();
-    mongoose.connection.close(() => {
-      console.log('📦 Database connection closed');
-      process.exit(0);
-    });
-  });
+async function shutdown(signal) {
+    console.log(`⚠️  ${signal} received: shutting down gracefully`);
+    await stopEmailSyncWorker();
+    await closeEmailSyncQueue();
+    await mongoose.connection.close();
+    console.log('📦 Database connection closed');
+    process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

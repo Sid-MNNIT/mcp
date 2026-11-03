@@ -22,6 +22,7 @@ EXCLUDED_MCP_TOOLS = {
     "ping",
     "send_email",
     "list_recent_message_ids",
+    "get_history_id",
     "fetch_emails_by_ids",
     "get_recent_job_emails",
 }

@@ -1,6 +1,7 @@
 import { Email } from "../models/email.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { emailService } from "../services/email.service.js";
+import { requestEmailSync } from "../services/emailSyncQueue.service.js";
 
 //store emails
 const storeEmail = asyncHandler(async (req, res) => {
@@ -13,7 +14,7 @@ const storeEmail = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: "Unauthorized: no userId" });
   }
 
-  const { emailId,threadId, type, from, subject, text, date,folder  } = req.body;
+  const { emailId,threadId, type, from, subject, text, date,folder, deletedByUser } = req.body;
 
   if (!emailId || !type || !from || !date || !threadId || !folder) {
     throw new Error("Missing required email fields");
@@ -33,6 +34,8 @@ const storeEmail = asyncHandler(async (req, res) => {
         date: new Date(date),
         folder,
         isEmbedded: false,
+        // only touch this when the caller sends it (classifier hides non-job emails)
+        ...(deletedByUser !== undefined && { deletedByUser }),
       },
     },
     { upsert: true, new: true }
@@ -266,6 +269,16 @@ const emailSync=asyncHandler(async (req, res)=> {
 }
 )
 
+// POST /api/emails/sync-trigger   Body: { trigger: "auto" | "manual" }
+// Does not sync anything itself: it only asks the queue to. The result
+// arrives later through the "emails-updated" SSE event.
+const triggerEmailSync = asyncHandler(async (req, res) => {
+  const trigger = req.body?.trigger === "manual" ? "manual" : "auto";
+  const result = await requestEmailSync(req.user._id, trigger);
+
+  return res.status(202).json({ success: true, ...result });
+});
+
 const queryEmails = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const { sender, type, folder, keyword, limit = 20 } = req.body;
@@ -347,4 +360,5 @@ export {
   toggleStarEmail,
   queryEmails,
   checkExistingEmailIds,
+  triggerEmailSync,
 };

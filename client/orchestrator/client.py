@@ -4,7 +4,7 @@ import os
 
 from client.mcp.client import get_mcp_client, close_mcp_client
 from client.orchestrator.react_agent import run_react_agent
-from client.orchestrator.email_agent import prepare_email_reply_preview,send_email_with_approval,ingest_and_store_emails
+from client.orchestrator.email_agent import prepare_email_reply_preview,send_email_with_approval,ingest_and_store_emails,save_new_emails_as_pending,classify_pending_emails
 
 from client.orchestrator.job_agent import (
     search_jobs_pipeline,
@@ -715,6 +715,38 @@ async def email_digest_pipeline(request: Request):
 
 @app.post("/pipelines/ingest-emails")
 async def ingest_emails_endpoint(request: Request):
+    """
+    Step 1 of the queue sync: Gmail -> DB, new emails saved as PENDING.
+    Body: { userId, lastHistoryId }
+    """
+    body = await request.json()
+    source = request.state.source
+    jwt = request.state.jwt
+    user_id = body.get("userId") or request.state.user_id
+    last_history_id = body.get("lastHistoryId")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="userId required")
+
+    if source == "cron":
+        print(f"🤖 [CRON] Ingest emails for user: {user_id}")
+        result = await save_new_emails_as_pending(jwt=None, user_id=user_id, last_history_id=last_history_id)
+    else:
+        if not jwt:
+            raise HTTPException(status_code=401, detail="JWT missing")
+        print(f"👤 [USER] Ingest emails for user: {user_id}")
+        result = await save_new_emails_as_pending(jwt=jwt, user_id=user_id, last_history_id=last_history_id)
+
+    print(f"📤 Ingest complete: saved {result['saved']} emails for user {user_id}")
+    return {"success": True, "userId": user_id, **result}
+
+
+@app.post("/pipelines/classify-emails")
+async def classify_emails_endpoint(request: Request):
+    """
+    Step 2 of the queue sync: classify the PENDING emails with Groq.
+    Body: { userId }
+    """
     body = await request.json()
     source = request.state.source
     jwt = request.state.jwt
@@ -724,16 +756,15 @@ async def ingest_emails_endpoint(request: Request):
         raise HTTPException(status_code=400, detail="userId required")
 
     if source == "cron":
-        print(f"🤖 [CRON] Ingest emails for user: {user_id}")
-        result = await ingest_and_store_emails(jwt=None, user_id=user_id)
+        print(f"🤖 [CRON] Classify emails for user: {user_id}")
+        result = await classify_pending_emails(jwt=None, user_id=user_id)
     else:
         if not jwt:
             raise HTTPException(status_code=401, detail="JWT missing")
-        print(f"👤 [USER] Ingest emails for user: {user_id}")
-        result = await ingest_and_store_emails(jwt=jwt, user_id=user_id)
+        print(f"👤 [USER] Classify emails for user: {user_id}")
+        result = await classify_pending_emails(jwt=jwt, user_id=user_id)
 
-    print(f"📤 Ingest complete: stored {len(result)} emails for user {user_id}")
-    return {"success": True, "stored": len(result), "userId": user_id}
+    return {"success": True, "userId": user_id, **result}
 
 
 # ============================================================

@@ -62,6 +62,21 @@ def list_recent_message_ids(
 
 
 # ---------------------------
+# READ: current mailbox historyId (used to skip syncs when nothing changed)
+# ---------------------------
+@mcp.tool()
+def get_history_id(userId: str):
+    """
+    Returns the mailbox's current Gmail historyId. This number goes up every
+    time the mailbox changes, so if it is the same as at the last sync there
+    is nothing new to fetch. One tiny API call, no message bodies.
+    """
+    service = get_gmail_service(userId)
+    profile = service.users().getProfile(userId="me").execute()
+    return {"historyId": str(profile.get("historyId"))}
+
+
+# ---------------------------
 # READ: batch-fetch + filter by IDs (phase 2 of two-phase sync)
 # ---------------------------
 @mcp.tool()

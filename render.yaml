@@ -75,6 +75,8 @@ services:
         sync: false        # e.g. https://jobsy-chat.onrender.com
       - key: ASK_JOBSY_URL
         sync: false        # same as CHAT_URL
+      - key: REDIS_URL
+        sync: false        # same Redis as the Python services (email-sync queue)
 
   # ───────────────────────────────────────────────
   # 2. Python orchestrator (bundles resume_mcp + gmail/job_search stdio MCPs)

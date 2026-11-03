@@ -11,6 +11,7 @@ import {
   toggleStarEmail,
   queryEmails,
   checkExistingEmailIds,
+  triggerEmailSync,
 } from "../controllers/email.controller.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
@@ -28,6 +29,7 @@ router.patch("/:id/star", verifyJWT,toggleStarEmail);
 
 router.post("/query", verifyJWT, queryEmails);
 router.post("/exists", verifyJWT, checkExistingEmailIds);
+router.post("/sync-trigger", verifyJWT, triggerEmailSync);
 
 
 

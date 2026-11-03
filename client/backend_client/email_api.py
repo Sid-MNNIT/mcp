@@ -38,6 +38,28 @@ def get_existing_email_ids(email_ids: list, jwt: str = None, user_id: str = None
         return set()  # fail open: classify everything if check fails
 
 
+def get_pending_emails(jwt: str = None, user_id: str = None, limit: int = 30) -> list:
+    """
+    Emails the sync has saved but not classified yet (type PENDING).
+    """
+    headers = {"Content-Type": "application/json"}
+
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    else:
+        headers["X-Service-Key"] = SERVICE_KEY
+        headers["X-User-Id"] = str(user_id)
+
+    res = requests.post(
+        f"{BASE_URL}/api/emails/query",
+        json={"type": "PENDING", "limit": limit},
+        headers=headers,
+        timeout=10
+    )
+    res.raise_for_status()
+    return res.json().get("emails", [])
+
+
 def save_email(email: dict, jwt: str = None, user_id: str = None):
     
     if not jwt and not user_id:

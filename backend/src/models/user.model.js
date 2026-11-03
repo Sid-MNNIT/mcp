@@ -149,6 +149,21 @@ const userSchema = new mongoose.Schema(
       default: false
     },
 
+    // Email sync bookkeeping (used by the email-sync queue)
+    lastSyncedAt: {
+      type: Date,
+      default: null
+    },
+    lastHistoryId: {
+      type: String,
+      default: null
+    },
+    syncStatus: {
+      type: String,
+      enum: ["idle", "syncing", "error"],
+      default: "idle"
+    },
+
     // Google Calendar OAuth tokens
     googleCalendarTokens: {
       access_token:  { type: String },

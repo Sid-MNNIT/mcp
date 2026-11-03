@@ -34,7 +34,7 @@ const emailSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["JOB", "INTERVIEW", "OFFER", "REJECTION", "OTHER"],
+      enum: ["PENDING", "JOB", "INTERVIEW", "OFFER", "REJECTION", "OTHER"],
       required: true,
     },
 

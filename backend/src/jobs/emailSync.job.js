@@ -1,31 +1,17 @@
-import cron from "node-cron";
-import fetch from "node-fetch";
-import pLimit from "p-limit";
+import { Worker, UnrecoverableError } from "bullmq";
 import { User } from "../models/user.model.js";
 import { Email } from "../models/email.model.js";
 import { calendarService } from "../services/calendar.service.js";
-import jwt from "jsonwebtoken";
+import { sseService } from "../services/sse.service.js";
+import { EMAIL_SYNC_QUEUE, createRedisConnection } from "../services/emailSyncQueue.service.js";
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://localhost:9000";
-
-// Cap concurrent ingest calls to the orchestrator so we don't fire off
-// unbounded parallel requests when the user list grows.
-const ingestLimit = pLimit(5);
-
-// Overlap guards — each job skips its own tick if the previous tick of
-// THAT SAME job is still running. They are independent of each other so
-// a slow ingest run never blocks the (cheap, fast) scheduler run.
-let isIngestRunning = false;
-let isSchedulerRunning = false;
-
-// Generate a short-lived JWT for the user so orchestrator accepts ingest requests
-function generateServiceJWT(user) {
-  return jwt.sign(
-    { _id: user._id, email: user.email },
-    process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "10m" }
-  );
-}
+// Email sync worker.
+// The queue (services/emailSyncQueue.service.js) decides WHEN a sync should
+// happen. This file is the part that actually does it, one job per user:
+//   1. ask the orchestrator to read Gmail and save new emails as PENDING
+//   2. tell the browser (SSE) so the emails show up straight away
+//   3. ask the orchestrator to classify the PENDING emails
+//   4. tell the browser again, then create calendar events for interviews
 
 // Detect permanently revoked Gmail tokens
 function isTokenRevoked(errorText) {
@@ -37,50 +23,33 @@ function isTokenRevoked(errorText) {
   );
 }
 
-// Call orchestrator to ingest emails for a user (Gmail → MongoDB)
-async function ingestEmailsForUser(user) {
-  try {
-    const res = await fetch(`${ORCHESTRATOR_URL}/pipelines/ingest-emails`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Service-Key": process.env.SERVICE_KEY,
-        "X-Request-Source": "cron",
-        "X-User-Id": user._id.toString(),
-      },
-      body: JSON.stringify({ userId: user._id }),
-      // Generous timeout — Gmail MCP + Groq can be slow on Render's
-      // free tier. 150s comfortably fits: fetch (~10s) + classification
-      // for 15 messages (~20s) + saves, with headroom for cold starts.
-      signal: AbortSignal.timeout(150_000),
-    });
-    if (!res.ok) {
-      const errorText = await res.text();
-      if (isTokenRevoked(errorText)) {
-        await User.findByIdAndUpdate(user._id, { isGmailConnected: false });
-        console.warn(`🔌 [CronJob] Gmail token revoked for ${user.email} — marked disconnected.`);
-      } else {
-        console.error(`❌ [CronJob] Ingest failed for ${user.email}: ${errorText}`);
-      }
-      return false;
+// Call one of the orchestrator pipelines on behalf of a user
+async function callOrchestrator(path, userId, body = {}) {
+  const orchestratorUrl = process.env.ORCHESTRATOR_URL || "http://localhost:9000";
+
+  const res = await fetch(`${orchestratorUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Service-Key": process.env.SERVICE_KEY,
+      "X-Request-Source": "cron",
+      "X-User-Id": String(userId),
+    },
+    body: JSON.stringify({ userId, ...body }),
+    // Generous timeout — Gmail MCP + Groq can be slow on Render's
+    // free tier (cold starts included).
+    signal: AbortSignal.timeout(150_000),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    // A revoked token will never work on retry, so do not retry it.
+    if (isTokenRevoked(errorText)) {
+      throw new UnrecoverableError("Gmail token revoked");
     }
-    console.log(`📥 [CronJob] Emails ingested for user ${user._id}`);
-    return true;
-  } catch (err) {
-    // AbortSignal timeout fires as AbortError
-    if (err.name === "AbortError" || err.name === "TimeoutError") {
-      console.warn(`⏱️ [CronJob] Ingest timed out for ${user.email} — skipping this run`);
-      return false;
-    }
-    // Check if the error message itself contains revocation info
-    if (isTokenRevoked(err.message)) {
-      await User.findByIdAndUpdate(user._id, { isGmailConnected: false });
-      console.warn(`🔌 [CronJob] Gmail token revoked for ${user.email} — marked disconnected.`);
-      return false;
-    }
-    console.error(`❌ [CronJob] Ingest error for ${user.email}:`, err.message);
-    return false;
+    throw new Error(`Orchestrator ${path} failed (${res.status}): ${errorText}`);
   }
+  return res.json();
 }
 
 // Read INTERVIEW emails from MongoDB → Groq LLM → save to CalendarEvent
@@ -95,7 +64,7 @@ async function autoScheduleInterviews(user) {
 
   if (interviewEmails.length === 0) return;
 
-  console.log(`📅 [CronJob] ${interviewEmails.length} unscheduled INTERVIEW email(s) for user ${user._id}`);
+  console.log(`📅 [EmailSync] ${interviewEmails.length} unscheduled INTERVIEW email(s) for user ${user._id}`);
 
   for (const email of interviewEmails) {
     // Small delay between emails to avoid hitting Groq rate limit
@@ -104,65 +73,108 @@ async function autoScheduleInterviews(user) {
     try {
       // Reads email from MongoDB, calls Groq LLM, saves to CalendarEvent collection
       const result = await calendarService.createCalendarEventFromEmail(user._id, email._id);
-      console.log(`✅ [CronJob] Event saved: "${email.subject}" → ${result.company} on ${result.date} at ${result.time}`);
+      console.log(`✅ [EmailSync] Event saved: "${email.subject}" → ${result.company} on ${result.date} at ${result.time}`);
     } catch (err) {
       if (err.statusCode === 422) {
         // No date/time in email — calendar.service already marked calendarEventCreated: true
-        console.warn(`⚠️ [CronJob] Skipped "${email.subject}" — no date/time found in email`);
+        console.warn(`⚠️ [EmailSync] Skipped "${email.subject}" — no date/time found in email`);
       } else if (err.statusCode === 400) {
         // Invalid email content — mark done so we don't retry
-        console.warn(`⚠️ [CronJob] Skipped "${email.subject}" — invalid email content`);
+        console.warn(`⚠️ [EmailSync] Skipped "${email.subject}" — invalid email content`);
         await Email.findByIdAndUpdate(email._id, { calendarEventCreated: true });
       } else {
         // Unexpected error — leave calendarEventCreated: false to retry next tick
-        console.error(`❌ [CronJob] Failed "${email.subject}" (will retry):`, err.message);
+        console.error(`❌ [EmailSync] Failed "${email.subject}" (will retry):`, err.message);
       }
     }
   }
 }
 
-// Only sync users who have been active in the last 24h.
-// Rationale on Render free tier:
-//   - Idle users waste scarce CPU on 0.1 vCPU instances.
-//   - Someone who hasn't logged in for a day probably isn't waiting on
-//     fresh email data — they'll pull it themselves when they return.
-//   - Skipping them keeps the cron tick short and the container CPU
-//     available for live user requests.
-const ACTIVE_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+// What the worker does for one queued job
+async function processEmailSync(job) {
+  const { userId } = job.data;
 
-// Main job
-async function runEmailSyncJob() {
-  console.log("🔄 [CronJob] Running email sync...");
-  try {
-    const users = await User.find({
-      isGmailConnected: true,
-      lastLogin: { $gte: new Date(Date.now() - ACTIVE_USER_WINDOW_MS) },
-    });
+  const user = await User.findById(userId);
+  if (!user || !user.isGmailConnected) {
+    console.log(`⏭️  [EmailSync] User ${userId} has no Gmail connected — skipping`);
+    return;
+  }
 
-    if (users.length === 0) {
-      console.log("💤 [CronJob] No recently-active users — nothing to do.");
-      return;
-    }
+  console.log(`🔄 [EmailSync] Syncing user ${userId} (${job.data.trigger})`);
+  await User.findByIdAndUpdate(userId, { syncStatus: "syncing" });
 
-    console.log(`👥 [CronJob] Processing ${users.length} active user(s)`);
+  // Step 1: Gmail -> MongoDB (new emails are saved as PENDING)
+  const fetched = await callOrchestrator("/pipelines/ingest-emails", userId, {
+    lastHistoryId: user.lastHistoryId,
+  });
+  if (fetched.saved > 0) {
+    sseService.emit(userId, "emails-updated", { phase: "fetched", count: fetched.saved });
+  }
 
-    for (const user of users) {
-      await autoScheduleInterviews(user);
-    }
-    console.log("✅ [CronJob:Scheduler] Done.");
-  } catch (err) {
-    console.error("❌ [CronJob:Scheduler] Error:", err.message);
-  } finally {
-    isSchedulerRunning = false;
+  // Step 2: PENDING emails -> Groq -> real type (or hidden if not job related)
+  const classified = await callOrchestrator("/pipelines/classify-emails", userId);
+  sseService.emit(userId, "emails-updated", {
+    phase: "classified",
+    changed: classified.classified > 0 || fetched.saved > 0,
+  });
+
+  // Step 3: interview emails -> calendar events
+  await autoScheduleInterviews(user);
+
+  // Only now is the sync really finished, so only now we remember it.
+  await User.findByIdAndUpdate(userId, {
+    syncStatus: "idle",
+    lastSyncedAt: new Date(),
+    lastHistoryId: fetched.historyId || user.lastHistoryId,
+  });
+  console.log(
+    `✅ [EmailSync] User ${userId}: ${fetched.saved} new, ${classified.classified} classified` +
+      (fetched.skipped ? " (mailbox unchanged)" : "")
+  );
+}
+
+// Runs every time an attempt fails. BullMQ retries on its own, so we only
+// act when this was the last attempt.
+async function handleFailedJob(job, err) {
+  if (!job) return;
+  const { userId } = job.data;
+
+  if (err instanceof UnrecoverableError) {
+    await User.findByIdAndUpdate(userId, { isGmailConnected: false, syncStatus: "idle" });
+    console.warn(`🔌 [EmailSync] Gmail token revoked for user ${userId} — marked disconnected.`);
+    sseService.emit(userId, "emails-updated", { phase: "failed" });
+    return;
+  }
+
+  console.error(`❌ [EmailSync] Attempt ${job.attemptsMade}/${job.opts.attempts} failed for user ${userId}:`, err.message);
+
+  if (job.attemptsMade >= job.opts.attempts) {
+    // Set lastSyncedAt too, so a broken account is not retried every minute.
+    await User.findByIdAndUpdate(userId, { syncStatus: "error", lastSyncedAt: new Date() });
+    sseService.emit(userId, "emails-updated", { phase: "failed" });
   }
 }
 
-// Export — call this once at server start.
-// Cadence dropped from every 2 min → every 10 min. On Render free tier
-// the 2-min cadence was eating ~30s of the 120s window every tick,
-// starving live user requests. 10 min is still frequent enough that
-// users perceive email as "auto-syncing".
-export function startEmailSyncJob() {
-  console.log("⏰ [CronJob] Email sync registered — every 10 minutes");
-  cron.schedule("*/10 * * * *", runEmailSyncJob);
+let worker = null;
+
+// Call once at server start.
+export function startEmailSyncWorker() {
+  worker = new Worker(EMAIL_SYNC_QUEUE, processEmailSync, {
+    connection: createRedisConnection(),
+    // How many users are synced at the same time.
+    concurrency: Number(process.env.EMAIL_SYNC_CONCURRENCY) || 2,
+    // Groq rate limit guard: at most this many sync jobs start per minute.
+    limiter: {
+      max: Number(process.env.EMAIL_SYNC_JOBS_PER_MINUTE) || 10,
+      duration: 60 * 1000,
+    },
+  });
+
+  worker.on("failed", handleFailedJob);
+  worker.on("error", (err) => console.error("❌ [EmailSync] Worker error:", err.message));
+  console.log("⏰ [EmailSync] Worker started");
+}
+
+export async function stopEmailSyncWorker() {
+  if (worker) await worker.close();
 }

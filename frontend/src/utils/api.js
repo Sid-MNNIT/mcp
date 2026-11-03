@@ -334,6 +334,26 @@ export const getEmailStats = async () => {
   };
 };
 
+// Asks the backend to sync Gmail in the background.
+// trigger: "auto" (page open / heartbeat) or "manual" (Sync button).
+// The new emails arrive later through the "emails-updated" SSE event.
+export const triggerEmailSync = async (trigger = "auto") => {
+  const res = await apiFetch(`${BASE_URL}/emails/sync-trigger`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({ trigger }),
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to start email sync");
+  }
+
+  return await res.json();
+};
+
 export const syncEmails = async () => {
   const res = await apiFetch(`${BASE_URL}/emails/email-sync`, {
     method: "POST",

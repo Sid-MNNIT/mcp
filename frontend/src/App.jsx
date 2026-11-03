@@ -9,9 +9,13 @@ import Settings from "./pages/Settings";
 import AskAI from "./pages/AskAI";
 import AskAIFab from "./components/common/AskAIFab";
 import Resume from "./pages/Resume";
+import { useAuth } from "./context/AuthContext";
+import { useEmailAutoSync } from "./hooks/useEmailAutoSync";
 
 function AppInner() {
   const location = useLocation();
+  const { status } = useAuth();
+  useEmailAutoSync(status === "authenticated");
   const hideFab = ["/auth", "/ask-ai"].includes(location.pathname);
 
   return (

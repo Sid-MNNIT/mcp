@@ -34,7 +34,7 @@ React (Vite)  ──►  Node/Express backend  ──►  Chat API (FastAPI)
 | Folder | What lives there |
 | --- | --- |
 | `frontend/` | React 19 + Vite app (dashboard, jobs, emails, resume, settings) |
-| `backend/` | Node/Express API with MongoDB, Google OAuth, Cloudinary uploads and the email sync cron job |
+| `backend/` | Node/Express API with MongoDB, Google OAuth, Cloudinary uploads and the email sync queue |
 | `client/ask_jobsy/` | The chat API and Redis-backed conversation memory |
 | `client/orchestrator/` | The ReAct agent and the pipelines that do the real work (email, jobs, calendar, resume) |
 | `client/llm/` | OpenAI and Groq clients, prompts, job matching and ranking |
@@ -50,10 +50,24 @@ React (Vite)  ──►  Node/Express backend  ──►  Chat API (FastAPI)
 
 The agent can only draft email replies, it can't send them or create calendar events yet.
 
+### How email sync works
+
+Emails sync in the background while someone is actually using the app, not on a fixed timer for every user.
+
+1. The frontend (`useEmailAutoSync`) asks the backend to sync when the app opens, when the tab becomes visible again, and every 5 minutes while it is visible. The Sync button asks too, with higher priority.
+2. The backend (`POST /api/emails/sync-trigger`) checks the user: Gmail connected, not synced in the last 5 minutes. If so it adds one job per user to the BullMQ queue `email-sync` and answers straight away.
+3. A worker (`backend/src/jobs/emailSync.job.js`) takes jobs 2 at a time (`EMAIL_SYNC_CONCURRENCY`) and at most 10 a minute (`EMAIL_SYNC_JOBS_PER_MINUTE`) to stay under Groq's rate limit. For each job it asks the orchestrator to:
+   - check Gmail's `historyId`; if it hasn't changed since the last sync, stop,
+   - save new emails as `PENDING` and tell the browser (SSE event `emails-updated`, phase `fetched`),
+   - classify them with Groq, hide the ones that aren't job related, and tell the browser again (phase `classified`).
+4. Failed jobs are retried 3 times with a growing delay. A revoked Gmail token is not retried, the user is just marked as disconnected.
+
+It needs `REDIS_URL` on the backend too (same Redis as the Python services).
+
 ## Tech stack
 
 - **Frontend:** React 19, React Router, Vite
-- **Backend:** Node.js, Express 5, MongoDB (Mongoose), node-cron
+- **Backend:** Node.js, Express 5, MongoDB (Mongoose), BullMQ + Redis
 - **AI services:** Python 3.12, FastAPI, FastMCP / MCP, OpenAI, Groq, Redis
 - **Parsing:** PyMuPDF, pdfplumber, spaCy, python-docx, BeautifulSoup
 - **Deployment:** Docker on Render (backend, orchestrator and chat as separate services), frontend on Vercel
@@ -109,6 +123,7 @@ Then open http://localhost:5173.
 - [ ] Stream agent progress to the chat UI
 - [ ] Fill out the `docs/` folder
 - [ ] Enable the calendar MCP server in the orchestrator
+- [ ] Gmail push notifications (webhook) so new mail triggers a sync straight away
 
 ## Notes
 

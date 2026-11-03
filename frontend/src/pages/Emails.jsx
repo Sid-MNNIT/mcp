@@ -13,7 +13,7 @@ import mapEmailForUI from "../components/emails/EmailMapper.jsx";
 import AiReplyPreviewModal from "../components/emails/AiReplyPreviewModal.jsx"
 import "../styles/dashboard.css";
 import "../styles/email.css";
-import { getEmails,getSentEmails,getStarredEmails,toggleStarEmail,generateAiReplyPreview,sendAiReply,syncEmails,deleteEmail } from "../utils/api.js";
+import { getEmails,getSentEmails,getStarredEmails,toggleStarEmail,generateAiReplyPreview,sendAiReply,triggerEmailSync,deleteEmail } from "../utils/api.js";
 import { useCurrentUser } from "../hooks/useCurrentUser.js";
 
 export default function Emails() {
@@ -65,7 +65,7 @@ export default function Emails() {
     loadEmails();
   }, []);
 
-  // SSE — auto-refresh emails when cron syncs new ones
+  // SSE — auto-refresh emails when the email-sync queue finishes a step
   useEffect(() => {
     const BACKEND_URL =
       import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
@@ -74,20 +74,32 @@ export default function Emails() {
       { withCredentials: true }   // sends httpOnly cookie for auth
     );
 
-    es.addEventListener("email-synced", async () => {
-      console.log("📡 [SSE] New emails synced — refreshing...");
-      try {
-        const res = await getEmails();
-        const mapped = (res.emails || []).map(mapEmailForUI);
-        setEmails(mapped);
+    // The backend sends this twice per sync:
+    //   phase "fetched"    -> new emails were saved (not sorted by type yet)
+    //   phase "classified" -> emails now have their real type
+    // and phase "failed" if the sync gave up.
+    es.addEventListener("emails-updated", async (event) => {
+      const { phase, changed } = JSON.parse(event.data);
+      console.log(`📡 [SSE] emails-updated (${phase})`);
 
-        // update last-synced timestamp in the sidebar
-        const now = new Date();
-        setLastSynced(
-          now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        );
-      } catch (err) {
-        console.error("SSE re-fetch failed", err);
+      if (phase === "fetched" || (phase === "classified" && changed)) {
+        try {
+          const res = await getEmails();
+          const mapped = (res.emails || []).map(mapEmailForUI);
+          setEmails(mapped);
+
+          // update last-synced timestamp in the sidebar
+          const now = new Date();
+          setLastSynced(
+            now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          );
+        } catch (err) {
+          console.error("SSE re-fetch failed", err);
+        }
+      }
+
+      if (phase === "classified" || phase === "failed") {
+        setIsSyncing(false);
       }
     });
 
@@ -155,28 +167,28 @@ const handleSync = async () => {
   try {
     setIsSyncing(true);
 
-    // Call backend → agent → ingest pipeline
-    const result = await syncEmails();
-    console.log("✅ Sync result:", result);
+    // Put a high-priority sync on the queue. We do not wait for Gmail here:
+    // the emails show up through the "emails-updated" SSE event above.
+    const result = await triggerEmailSync("manual");
+    console.log("✅ Sync requested:", result);
 
-    //  Update last synced time
-    const now = new Date();
-    setLastSynced(
-      now.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    );
+    if (result.reason === "gmail-not-connected") {
+      alert("Please connect your Gmail first");
+    } else if (result.reason === "queue-unavailable") {
+      alert("Sync is busy right now, please try again in a moment");
+    }
 
-    
-    const res = await getEmails();
-    const mapped = (res.emails || []).map(mapEmailForUI);
-    setEmails(mapped);
+    // Nothing to wait for (just synced, or could not be queued)
+    if (!result.queued && result.reason !== "already-queued") {
+      setIsSyncing(false);
+      return;
+    }
 
+    // Safety net: if the SSE event never arrives, stop the spinner anyway
+    setTimeout(() => setIsSyncing(false), 2 * 60 * 1000);
   } catch (err) {
     console.error("❌ Sync failed", err);
     alert("Failed to sync Gmail");
-  } finally {
     setIsSyncing(false);
   }
 };

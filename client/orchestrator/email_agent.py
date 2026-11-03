@@ -2,10 +2,12 @@ from client.backend_client.agent_api import execute_tool
 from client.wrappers.gmail_wrapper import clean_email_body
 from client.orchestrator.email_prompt_builder import build_email_prompt
 from client.orchestrator.email_mapper import (
+    ALLOWED_TYPES,
     map_to_backend,
     map_to_backend_with_classification,
+    map_to_pending_payload,
 )
-from client.backend_client.email_api import save_email, get_existing_email_ids
+from client.backend_client.email_api import save_email, get_existing_email_ids, get_pending_emails
 from client.llm.llm_service import generate_email_reply, classify_emails_batch
 
 import json
@@ -171,10 +173,11 @@ async def send_email_with_approval(draft: dict, jwt: str):
 #   Phase 4: batch-classify with Groq (one call per ~10 emails).
 #   Phase 5: persist.
 # ============================================================
-async def ingest_and_store_emails(jwt: str = None, user_id: str = None):
-    if not jwt and not user_id:
-        raise RuntimeError("Either JWT or user_id is required")
-
+async def fetch_new_emails(jwt: str = None, user_id: str = None):
+    """
+    Phases 1-3: list Gmail IDs, drop the ones we already have, then download
+    and clean the rest. Returns a list of emails (empty if nothing is new).
+    """
     # ── Phase 1: list Gmail IDs (no bodies) ─────────────────────────────
     refs_result = await execute_tool(
         tool="list_recent_message_ids",
@@ -220,6 +223,18 @@ async def ingest_and_store_emails(jwt: str = None, user_id: str = None):
     for e in emails:
         e["body"] = clean_email_body(e.get("body", ""))
 
+    return emails
+
+
+async def ingest_and_store_emails(jwt: str = None, user_id: str = None):
+    if not jwt and not user_id:
+        raise RuntimeError("Either JWT or user_id is required")
+
+    # ── Phases 1-3: list, dedupe, download ──────────────────────────────
+    emails = await fetch_new_emails(jwt=jwt, user_id=user_id)
+    if not emails:
+        return []
+
     # ── Phase 4: batch-classify via Groq ────────────────────────────────
     classifications = classify_emails_batch(emails)
 
@@ -239,9 +254,84 @@ async def ingest_and_store_emails(jwt: str = None, user_id: str = None):
 
     print(
         f"✅ [email_agent] Ingested {len(stored)} new job email(s) "
-        f"from {len(fresh_ids)} fresh Gmail message(s)"
+        f"from {len(emails)} fresh Gmail message(s)"
     )
     return stored
+
+
+# ============================================================
+# Queue-based sync (used by the Node email-sync worker)
+#
+# The same work as ingest_and_store_emails, but cut in two so the
+# user sees new emails quickly:
+#   1. save_new_emails_as_pending  -> Gmail to DB, no Groq, type PENDING
+#   2. classify_pending_emails     -> Groq decides the real type
+# ============================================================
+async def save_new_emails_as_pending(jwt: str = None, user_id: str = None, last_history_id: str = None):
+    if not jwt and not user_id:
+        raise RuntimeError("Either JWT or user_id is required")
+
+    # Cheap check first. Read the historyId BEFORE fetching, so a mail that
+    # arrives while we work changes the number and is picked up next time.
+    history_result = await execute_tool(
+        tool="get_history_id",
+        args={},
+        jwt=jwt,
+        user_id=user_id,
+    )
+    history_id = str(_unwrap_mcp_result(history_result, "historyId"))
+
+    if last_history_id and history_id == str(last_history_id):
+        print(f"⏭️  [email_agent] Mailbox unchanged since last sync (historyId {history_id})")
+        return {"skipped": True, "historyId": history_id, "saved": 0}
+
+    emails = await fetch_new_emails(jwt=jwt, user_id=user_id)
+
+    for email in emails:
+        save_email(map_to_pending_payload(email), jwt=jwt, user_id=user_id)
+
+    print(f"💾 [email_agent] Saved {len(emails)} new email(s) as PENDING")
+    return {"skipped": False, "historyId": history_id, "saved": len(emails)}
+
+
+async def classify_pending_emails(jwt: str = None, user_id: str = None):
+    if not jwt and not user_id:
+        raise RuntimeError("Either JWT or user_id is required")
+
+    pending = get_pending_emails(jwt=jwt, user_id=user_id)
+    if not pending:
+        return {"classified": 0, "hidden": 0}
+
+    # classify_emails_batch reads "subject" and "body"; our DB calls it "text"
+    to_classify = [
+        {"subject": e.get("subject", ""), "body": e.get("text", "")}
+        for e in pending
+    ]
+    results = classify_emails_batch(to_classify)
+
+    classified = 0
+    hidden = 0
+    for stored, result in zip(pending, results):
+        payload = {
+            key: stored.get(key)
+            for key in ("emailId", "threadId", "from", "subject", "text", "date", "folder")
+        }
+
+        if result.get("is_relevant"):
+            email_type = (result.get("type") or "OTHER").upper()
+            payload["type"] = email_type if email_type in ALLOWED_TYPES else "OTHER"
+            classified += 1
+        else:
+            # Not a real job email. Keep a hidden record so the next sync
+            # does not download and classify it all over again.
+            payload["type"] = "OTHER"
+            payload["deletedByUser"] = True
+            hidden += 1
+
+        save_email(payload, jwt=jwt, user_id=user_id)
+
+    print(f"🏷️  [email_agent] Classified {classified} email(s), hid {hidden} non-job email(s)")
+    return {"classified": classified, "hidden": hidden}
 
 
 
