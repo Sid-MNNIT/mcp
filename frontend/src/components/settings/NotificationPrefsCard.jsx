@@ -79,6 +79,7 @@ export default function NotificationPrefsCard() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
+      console.error(err);
       alert("Failed to save preferences. Please try again.");
     } finally {
       setSaving(false);

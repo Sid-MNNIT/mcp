@@ -14,7 +14,6 @@ export default function EmailSidebar({
   onShowStarred,
   onSync,
   isSyncing,
-  lastSynced,
 }) {
   return (
     <div className="email-sidebar">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import "../styles/jobs.css";
 
 import Sidebar from "../components/layout/Sidebar";
@@ -20,7 +20,6 @@ import { useAuth } from "../context/AuthContext";
 
 const Jobs = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState("search");
@@ -74,6 +73,7 @@ const Jobs = () => {
             setJobs(response.data.jobs);
           }
         } catch (error) {
+          console.error(error);
           console.error("Failed to rank jobs:", error);
           setError("Failed to sort by relevance. Please try again.");
         } finally {
@@ -93,6 +93,7 @@ const Jobs = () => {
         setSavedJobIds(ids);
       }
     } catch (err) {
+      console.error(err);
       console.error("Failed to load saved jobs:", err);
     }
   };
@@ -110,6 +111,7 @@ const Jobs = () => {
         setJobs([]);
       }
     } catch (err) {
+      console.error(err);
       setError("Failed to load saved jobs.");
     } finally {
       setLoading(false);
@@ -138,6 +140,7 @@ const Jobs = () => {
       if (response.success === false) throw new Error(response.message);
       setJobs(response.data?.jobs || []);
     } catch (error) {
+      console.error(error);
       setError(error.message);
       setJobs([]);
     } finally {
@@ -155,6 +158,7 @@ const Jobs = () => {
       if (response.success === false) throw new Error(response.message);
       setJobs(response.data?.jobs || []);
     } catch (error) {
+      console.error(error);
       setError("Failed to load recommendations.");
     } finally {
       setLoading(false);

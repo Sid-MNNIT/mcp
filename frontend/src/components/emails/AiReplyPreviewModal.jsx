@@ -7,9 +7,9 @@ export default function AiReplyPreviewModal({
   onSend,
   onEditInCompose
 }) {
-  if (!draft || !originalEmail) return null; // 🔒 HARD GUARD
+  const [body, setBody] = useState(draft?.body || "");
 
-  const [body, setBody] = useState(draft.body || "");
+  if (!draft || !originalEmail) return null; // 🔒 HARD GUARD
 
   return (
     <div className="compose-overlay">

@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 import os
 
 from client.mcp.client import get_mcp_client, close_mcp_client
+from client.orchestrator.react_agent import run_react_agent
 from client.orchestrator.email_agent import prepare_email_reply_preview,send_email_with_approval,ingest_and_store_emails
 
 from client.orchestrator.job_agent import (
@@ -158,6 +159,29 @@ async def execute_agent(request: Request):
             status_code=500,
             detail=f"Tool execution failed: {str(e)}"
         )
+
+# ---------------------------
+# ReAct agent (LLM picks from the MCP tools)
+# ---------------------------
+@app.post("/agent/react")
+async def react_agent(request: Request):
+    if request.headers.get("X-Service-Key") != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized service")
+
+    body = await request.json()
+    text = body.get("text")
+    user_id = body.get("userId")
+
+    if not text or not user_id:
+        raise HTTPException(status_code=400, detail="text and userId required")
+
+    try:
+        response = await run_react_agent(text, user_id)
+        return {"response": response}
+    except Exception as e:
+        print(f"❌ [agent/react] {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent failed: {str(e)}")
+
 
 # ---------------------------
 # Email reply preview pipeline
@@ -644,6 +668,8 @@ async def email_query_pipeline(request: Request):
         )
 
     return result
+
+
 
 
 # ============================================================

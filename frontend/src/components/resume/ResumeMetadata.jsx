@@ -99,7 +99,7 @@ const isProjectHeading = (line) => {
   if (stripped.includes(" using ") && stripped.length > 40) return false;  // long "using" sentences
   // Bare API/SDK/lib names are detail fragments, not project titles
   if (/\b(API|SDK|CLI|UI|DB|ORM|JWT|REST|MCP|RAG|LLM|NLP)$/.test(stripped)) return false;
-  if (!/^[A-Z0-9"'(\[]/.test(stripped))        return false;
+  if (!/^[A-Z0-9"'([]/.test(stripped))        return false;
   return true;
 };
 

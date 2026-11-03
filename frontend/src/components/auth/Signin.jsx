@@ -46,6 +46,7 @@ export default function Signin({ onSwitchToLogin }) {
         alert(response.message || "Signup failed");
       }
     } catch (error) {
+      console.error(error);
       alert("Server error. Please try again.");
     } finally {
       setIsLoading(false);
@@ -67,6 +68,7 @@ export default function Signin({ onSwitchToLogin }) {
         alert(response.message || "Google signup failed");
       }
     } catch (err) {
+      console.error(err);
       console.error("Google signup error:", err);
       alert("Google signup failed. Please try again.");
     } finally {

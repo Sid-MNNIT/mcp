@@ -12,10 +12,12 @@ mcp
 fastmcp
 langchain-core
 langchain-mcp-adapters
+langgraph
 
 # ── LLM ────────────────────────────────────────────
 groq
 openai
+langchain-openai
 google-generativeai
 
 # ── Redis (conversation memory) ────────────────────
@@ -35,5 +37,6 @@ python-dateutil
 
 # ── Resume parsing ─────────────────────────────────
 pymupdf
+python-docx
 pdfplumber
 spacy

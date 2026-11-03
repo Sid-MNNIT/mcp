@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { X, Sparkles, SendHorizonal } from "lucide-react";
 
 export default function ComposeModal({
@@ -9,17 +9,20 @@ export default function ComposeModal({
   isAiLoading,
   isSending,
 }) {
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [to, setTo] = useState(initialData?.to || "");
+  const [subject, setSubject] = useState(initialData?.subject || "");
+  const [body, setBody] = useState(initialData?.body || "");
+  const [prevInitialData, setPrevInitialData] = useState(initialData);
 
-  useEffect(() => {
+  // Re-sync the form when the parent supplies new draft data (e.g. an AI draft)
+  if (initialData !== prevInitialData) {
+    setPrevInitialData(initialData);
     if (initialData) {
       setTo(initialData.to || "");
       setSubject(initialData.subject || "");
       setBody(initialData.body || "");
     }
-  }, [initialData]);
+  }
 
   return (
     <div className="compose-overlay">

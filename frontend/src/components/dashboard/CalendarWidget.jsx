@@ -26,7 +26,7 @@ export default function CalendarWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [connecting, setConnecting] = useState(false);
-  const [syncedOk, setSyncedOk] = useState(false);
+  const [, setSyncedOk] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
 
   // Check if calendar is connected on mount
@@ -74,6 +74,7 @@ export default function CalendarWidget() {
       const connected = await calendarService.getConnectionStatus();
       setGoogleConnected(connected);
     } catch (err) {
+      console.error(err);
       setGoogleConnected(false);
     }
   };
@@ -111,6 +112,7 @@ export default function CalendarWidget() {
       setEvents(eventsByDate);
       setSyncedOk(true);
     } catch (err) {
+      console.error(err);
       console.error('Failed to fetch events:', err);
       setSyncedOk(false);
       setError(err.message);
@@ -129,6 +131,7 @@ export default function CalendarWidget() {
       const authUrl = await calendarService.getCalendarAuthUrl();
       window.location.href = authUrl;
     } catch (err) {
+      console.error(err);
       setError('Failed to connect calendar. ' + err.message);
       setConnecting(false);
     }
@@ -142,6 +145,7 @@ export default function CalendarWidget() {
       setEvents({});
       setError(null);
     } catch (err) {
+      console.error(err);
       setError('Failed to disconnect calendar. Please try again.');
     }
   };
@@ -171,15 +175,6 @@ export default function CalendarWidget() {
   const getEventsForDate = (date) => {
     const dateKey = format(date, "yyyy-MM-dd");
     return events[dateKey] || [];
-  };
-
-  const getEventColor = (colorId) => {
-    const colors = {
-      '1': '#a4bdfc', '2': '#7ae7bf', '3': '#dbadff', '4': '#ff887c',
-      '5': '#fbd75b', '6': '#ffb878', '7': '#46d6db', '8': '#e1e1e1',
-      '9': '#5484ed', '10': '#51b749', '11': '#dc2127'
-    };
-    return colors[colorId] || '#6366f1';
   };
 
   const renderDays = () => {

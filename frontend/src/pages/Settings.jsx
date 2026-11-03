@@ -33,6 +33,7 @@ export default function Settings() {
         setGmailStatus(gmailData);
         setCalendarStatus(calData);
       } catch (err) {
+        console.error(err);
         console.error("Failed to fetch integration status", err);
       } finally {
         setLoading(false);
@@ -49,6 +50,7 @@ export default function Settings() {
       setGmailStatus({ connected: false, lastSync: null });
       setConfirmDisconnect(false);
     } catch (err) {
+      console.error(err);
       alert("Failed to disconnect Gmail. Please try again.");
     } finally {
       setActionLoading(false);
@@ -65,6 +67,7 @@ export default function Settings() {
       const authUrl = await getCalendarAuthUrl();
       window.location.href = authUrl;
     } catch (err) {
+      console.error(err);
       alert("Failed to get calendar auth URL. Please try again.");
       setCalendarActionLoading(false);
     }
@@ -77,6 +80,7 @@ export default function Settings() {
       setCalendarStatus({ isConnected: false, calendarEmail: null });
       setConfirmCalendarDisconnect(false);
     } catch (err) {
+      console.error(err);
       alert("Failed to disconnect Google Calendar. Please try again.");
     } finally {
       setCalendarActionLoading(false);

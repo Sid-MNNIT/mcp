@@ -7,8 +7,6 @@ export default function EmailList({
   fullWidth, 
   searchQuery, 
   onSearchChange,
-  onSync,
-  isSyncing 
 }) {
   return (
     <div className={`email-list-col ${fullWidth ? "full-width" : ""}`}>

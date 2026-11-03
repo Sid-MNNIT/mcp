@@ -16,6 +16,10 @@ from client.ask_jobsy.memory import (
 )
 
 
+# Pipelines the ReAct agent can handle with its MCP tools (see orchestrator/react_agent.py)
+AGENT_PIPELINES = {"job_search", "job_categories"}
+
+
 # -------------------------------------------------
 # Helper: resolve messageId from sender keyword
 # -------------------------------------------------
@@ -237,6 +241,31 @@ async def handle_user_message(
             save_conversation_turn(conversation_id, user_message, reply)
             return {"response": reply, "conversation_id": conversation_id, "metadata": {"plan": plan}}
         plan["args"]["messageId"] = resolved_id
+
+    # -----------------------------
+    # 5b. Let the ReAct agent try first for pipelines it has tools for
+    # -----------------------------
+    if plan["pipeline"] in AGENT_PIPELINES:
+        try:
+            agent_result = await run_pipeline(
+                pipeline_name="react_agent",
+                endpoint="/agent/react",
+                args={"text": user_message},
+                jwt=jwt,
+            )
+            save_conversation_turn(
+                conversation_id=conversation_id,
+                user_message=user_message,
+                assistant_message=f"Ran react agent for '{plan['pipeline']}'.",
+                user_id=user_id,
+            )
+            return {
+                "response": agent_result["response"],
+                "conversation_id": conversation_id,
+                "metadata": {"plan": plan},
+            }
+        except Exception as e:
+            print(f"⚠️ React agent failed ({e}), falling back to pipeline '{plan['pipeline']}'")
 
     # -----------------------------
     # 6. Execute pipeline

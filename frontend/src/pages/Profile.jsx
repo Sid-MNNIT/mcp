@@ -14,7 +14,6 @@ import SkillsModal from "../components/profile/SkillsModal";
 import {
   getMyProfile,
   updateMyProfile,
-  uploadAvatar,
   updateSkills,
   addExperience,
   updateExperience,
