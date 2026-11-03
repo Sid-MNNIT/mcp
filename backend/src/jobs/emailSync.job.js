@@ -121,7 +121,6 @@ async function autoScheduleInterviews(user) {
   }
 }
 
-<<<<<<< HEAD
 // Only sync users who have been active in the last 24h.
 // Rationale on Render free tier:
 //   - Idle users waste scarce CPU on 0.1 vCPU instances.
@@ -134,39 +133,6 @@ const ACTIVE_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Main job
 async function runEmailSyncJob() {
   console.log("🔄 [CronJob] Running email sync...");
-=======
-// Job A: Gmail ingest only (expensive — orchestrator HTTP call, up to 90s/user)
-async function runIngestJob() {
-  if (isIngestRunning) {
-    console.log("⏭️ [CronJob:Ingest] Previous ingest run still in progress — skipping this tick");
-    return;
-  }
-  isIngestRunning = true;
-  console.log("🔄 [CronJob:Ingest] Running email ingest...");
-  try {
-    const users = await User.find({ isGmailConnected: true });
-    await Promise.all(
-      users.map((user) => ingestLimit(() => ingestEmailsForUser(user)))
-    );
-    console.log("✅ [CronJob:Ingest] Done.");
-  } catch (err) {
-    console.error("❌ [CronJob:Ingest] Error:", err.message);
-  } finally {
-    isIngestRunning = false;
-  }
-}
-
-// Job B: interview → calendar event scheduling only (cheap — pure MongoDB + Groq,
-// no orchestrator call). Runs on its own faster cadence so interview emails get
-// calendar events quickly, independent of how often the (slower) ingest job runs.
-async function runSchedulerJob() {
-  if (isSchedulerRunning) {
-    console.log("⏭️ [CronJob:Scheduler] Previous scheduler run still in progress — skipping this tick");
-    return;
-  }
-  isSchedulerRunning = true;
-  console.log("🔄 [CronJob:Scheduler] Running interview auto-scheduler...");
->>>>>>> 8dbe323 (Gmail Workflow Changes)
   try {
     const users = await User.find({
       isGmailConnected: true,
